@@ -85,6 +85,20 @@ function otsuThreshold(data) {
  */
 export function sobelDownsample(imageData, targetWidth, targetHeight) {
   const { data, width, height } = imageData;
+
+  // 축소 비율이 6×를 초과하면 단계적 다운샘플링:
+  //   512→32 (비율 16): 512→128(4×4블록) → 128→32(4×4블록)
+  //   한 번에 16×16 블록을 평균하면 지배색이 희석돼 이미지가 뭉개짐
+  const maxRatio = Math.max(width / targetWidth, height / targetHeight);
+  if (maxRatio > 6) {
+    const midW = Math.round(targetWidth * 4);
+    const midH = Math.round(targetHeight * 4);
+    if (midW < width && midH < height) {
+      const intermediate = sobelDownsample(imageData, midW, midH);
+      return sobelDownsample(intermediate, targetWidth, targetHeight);
+    }
+  }
+
   const { edges } = sobelEdgeDetect(imageData);
 
   const blockW = Math.ceil(width / targetWidth);
