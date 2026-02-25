@@ -91,6 +91,13 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
   const blockH = Math.ceil(height / targetHeight);
   const result = new Uint8ClampedArray(targetWidth * targetHeight * 4);
 
+  // 블록 크기에 따라 엣지 가중치를 조정:
+  //   소형 블록(≤4px): 2× — 경계 선명도 보존
+  //   대형 블록( >4px): 1× — 균일 가중치 (블록 전체에 외곽색이 번지는 현상 방지)
+  //   64px 출력처럼 블록이 8px 이상일 때 외곽선이 두꺼워지던 원인
+  const avgBlock = (blockW + blockH) / 2;
+  const edgeWeight = avgBlock <= 4 ? 2 : 1;
+
   for (let ty = 0; ty < targetHeight; ty++) {
     for (let tx = 0; tx < targetWidth; tx++) {
       const startX = tx * blockW;
@@ -103,8 +110,7 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
       for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
           const idx = y * width + x;
-          // 엣지 픽셀 가중치 2× (기존 3×에서 감소 — 외곽색이 블록 전체를 오염시키는 현상 완화)
-          const w = edges[idx] ? 2 : 1;
+          const w = edges[idx] ? edgeWeight : 1;
           r += data[idx * 4] * w;
           g += data[idx * 4 + 1] * w;
           b += data[idx * 4 + 2] * w;

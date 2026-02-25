@@ -56,6 +56,11 @@ function blendColorWeak(p1, p2) {
  */
 export function antiAlias(imageData) {
   const { data, width, height } = imageData;
+
+  // 소형 이미지(128px 미만)는 AA 스킵 — 작은 픽셀아트에서는 날카로운 엣지가 의도에 맞음.
+  // 픽셀 하나가 차지하는 비중이 클수록 25% 블렌딩도 굵어보이는 현상이 생김.
+  if (width < 128 || height < 128) return imageData;
+
   const result = new Uint8ClampedArray(data);
 
   for (let y = 1; y < height - 1; y++) {
