@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PixelForge</title>
+  <script src="https://cdn.jsdelivr.net/npm/gif.js/dist/gif.js"></script>
+  <style>
+    /* ─── 리셋 & 변수 ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #1a1a2e;
+      --bg2: #16213e;
+      --bg3: #0f3460;
+      --accent: #e94560;
+      --text: #eaeaea;
+      --text2: #aaaaaa;
+      --border: #2a2a4a;
+      --panel: #1e1e3a;
+      --active: #e94560;
+      --tool-size: 36px;
+    }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font: 13px/1.4 'Segoe UI', sans-serif; }
+
+    /* ─── 레이아웃 ──────────────────────────────────────────── */
+    #app { display: grid; grid-template-rows: 42px 1fr 56px; height: 100vh; }
+    #topbar { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+    #main { display: grid; grid-template-columns: 52px 1fr 220px; overflow: hidden; }
+    #bottombar { display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--bg2); border-top: 1px solid var(--border); overflow-x: auto; }
+
+    /* ─── 상단바 ────────────────────────────────────────────── */
+    #topbar h1 { font-size: 16px; font-weight: 700; color: var(--accent); margin-right: 8px; }
+    .tab-btn { padding: 4px 14px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text2); cursor: pointer; font-size: 12px; }
+    .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    #topbar .spacer { flex: 1; }
+    .icon-btn { width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg3); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .icon-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+    /* ─── 도구 패널 (좌) ────────────────────────────────────── */
+    #toolpanel { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; gap: 4px; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; }
+    [data-tool] {
+      width: var(--tool-size); height: var(--tool-size);
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--bg3); color: var(--text);
+      cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      title: attr(title);
+    }
+    [data-tool]:hover { background: #2a2a5a; }
+    [data-tool].active { background: var(--accent); border-color: var(--accent); }
+    .tool-sep { width: 32px; height: 1px; background: var(--border); margin: 2px 0; }
+
+    /* 색상 스워치 */
+    #color-swatches { position: relative; width: 40px; height: 36px; margin-top: 4px; }
+    #color-secondary { position: absolute; bottom: 0; right: 0; width: 22px; height: 22px; border: 2px solid var(--bg); border-radius: 3px; cursor: pointer; }
+    #color-primary { position: absolute; top: 0; left: 0; width: 22px; height: 22px; border: 2px solid var(--bg); border-radius: 3px; cursor: pointer; }
+    #color-picker { position: absolute; opacity: 0; width: 0; height: 0; }
+
+    /* 브러시 크기 */
+    #brush-indicator { font-size: 10px; color: var(--text2); text-align: center; }
+
+    /* ─── 캔버스 영역 ────────────────────────────────────────── */
+    #canvas-area { display: flex; flex-direction: column; background: #111122; overflow: hidden; position: relative; }
+    #pixel-canvas { display: block; cursor: crosshair; flex: 1; width: 100%; height: 100%; }
+    #canvas-controls { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--bg2); font-size: 12px; border-top: 1px solid var(--border); }
+    #canvas-controls label { color: var(--text2); }
+    #zoom-slider { width: 80px; accent-color: var(--accent); }
+
+    /* 변환 오버레이 */
+    #convert-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.75);
+      display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    }
+    #convert-overlay.show { display: flex; }
+    #progress-bar { width: 220px; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+    #progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s; }
+    #progress-text { font-size: 13px; color: var(--text2); }
+
+    /* ─── 우측 패널 ─────────────────────────────────────────── */
+    #rightpanel { background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .panel-section { border-bottom: 1px solid var(--border); }
+    .panel-header { display: flex; align-items: center; padding: 6px 10px; background: var(--bg3); font-size: 12px; font-weight: 600; gap: 6px; cursor: pointer; user-select: none; }
+    .panel-header span { flex: 1; }
+    .panel-body { padding: 8px; overflow-y: auto; }
+
+    /* 팔레트 */
+    #palette-colors { display: flex; flex-wrap: wrap; gap: 3px; min-height: 40px; }
+    .palette-swatch { width: 20px; height: 20px; border: 1px solid var(--border); border-radius: 2px; cursor: pointer; transition: transform 0.1s; }
+    .palette-swatch:hover { transform: scale(1.2); z-index: 1; }
+    #palette-preset { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; margin-bottom: 6px; font-size: 12px; }
+    .panel-row { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+    .panel-row button { flex: 1; min-width: 50px; padding: 3px 6px; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .panel-row button:hover { background: var(--accent); }
+
+    /* 레이어 */
+    #layer-list { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
+    .layer-item { display: flex; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .layer-item:hover { background: var(--bg3); }
+    .layer-item.active { border-color: var(--accent); background: rgba(233,69,96,0.1); }
+    .layer-vis { background: transparent; border: none; cursor: pointer; font-size: 12px; padding: 0 2px; }
+    .layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .layer-opacity { width: 50px; accent-color: var(--accent); }
+    .layer-opacity-val { font-size: 10px; color: var(--text2); min-width: 24px; }
+
+    /* 품질 */
+    .quality-issue { padding: 3px 0; font-size: 11px; border-bottom: 1px solid var(--border); }
+
+    /* ─── 하단 프레임 바 ─────────────────────────────────────── */
+    #frame-list { display: flex; gap: 6px; align-items: center; flex: 1; overflow-x: auto; padding: 4px 0; }
+    .frame-item { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; border: 2px solid transparent; border-radius: 4px; padding: 2px; min-width: 56px; }
+    .frame-item canvas { border: 1px solid var(--border); border-radius: 2px; image-rendering: pixelated; }
+    .frame-item span { font-size: 10px; color: var(--text2); }
+    .frame-item.active { border-color: var(--accent); }
+    .bottom-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .bottom-controls button { padding: 4px 10px; background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .bottom-controls button:hover { background: var(--accent); }
+    .bottom-controls label { font-size: 11px; color: var(--text2); }
+    #fps-slider { width: 60px; accent-color: var(--accent); }
+
+    /* ─── 변환 설정 패널 ─────────────────────────────────────── */
+    #convert-panel {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 20px; width: 320px; display: none; z-index: 100; box-shadow: 0 8px 32px #000;
+    }
+    #convert-panel.show { display: block; }
+    #convert-panel h2 { font-size: 15px; margin-bottom: 14px; color: var(--accent); }
+    .form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+    .form-row label { flex: 1; color: var(--text2); }
+    .form-row input[type=number] { width: 60px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; }
+    .form-row select { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; }
+    .form-row input[type=checkbox] { accent-color: var(--accent); }
+    .form-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .form-actions button { flex: 1; padding: 7px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; }
+    #convert-run { background: var(--accent); color: #fff; }
+    #convert-cancel { background: var(--bg3); color: var(--text); }
+
+    /* ─── 반응형 스크롤 ──────────────────────────────────────── */
+    .panel-body { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- 상단바 -->
+  <header id="topbar">
+    <h1>🎨 PixelForge</h1>
+    <button class="tab-btn active" id="tab-editor">편집</button>
+    <button class="tab-btn" id="tab-convert" onclick="showConvertPanel()">변환</button>
+    <div class="spacer"></div>
+    <label style="font-size:11px;color:var(--text2);">
+      <input type="file" id="file-upload" accept="image/*" style="display:none">
+    </label>
+    <button class="icon-btn" title="이미지 열기" onclick="document.getElementById('file-upload').click()">📂</button>
+    <button class="icon-btn" title="PNG 저장" onclick="app.editor.exportPng()">💾</button>
+    <button class="icon-btn" title="스프라이트시트" onclick="app.editor.exportSpritesheet(4)">🗂</button>
+    <button class="icon-btn" title="GIF 내보내기" onclick="app.editor.exportGif()">🎞</button>
+    <button class="icon-btn" title="프로젝트 저장" onclick="saveProject()">📦</button>
+    <button class="icon-btn" title="프로젝트 불러오기" onclick="loadProject()">📂</button>
+    <button class="icon-btn" title="새 캔버스" onclick="newCanvas()">🆕</button>
+  </header>
+
+  <!-- 메인 영역 -->
+  <main id="main">
+    <!-- 도구 패널 -->
+    <aside id="toolpanel">
+      <button data-tool="pencil" title="연필 (B)">✏️</button>
+      <button data-tool="eraser" title="지우개 (E)">🧹</button>
+      <button data-tool="fill" title="채우기 (G)">🪣</button>
+      <button data-tool="eyedropper" title="스포이드 (I)">💧</button>
+      <div class="tool-sep"></div>
+      <button data-tool="line" title="선 (L)">╱</button>
+      <button data-tool="rect" title="사각형 (R)">▭</button>
+      <button data-tool="circle" title="원 (O)">◯</button>
+      <div class="tool-sep"></div>
+      <button data-tool="select" title="선택 (M)">▣</button>
+      <button data-tool="move" title="이동 (V)">✥</button>
+      <div class="tool-sep"></div>
+      <!-- 색상 스워치 -->
+      <div id="color-swatches">
+        <div id="color-secondary" style="background:#ffffff" title="보조색 (우클릭)"></div>
+        <div id="color-primary" style="background:#000000" title="주색"></div>
+        <input type="color" id="color-picker">
+      </div>
+      <div id="brush-indicator">1px</div>
+      <div class="tool-sep"></div>
+      <!-- 대칭 -->
+      <button id="sym-h" title="좌우 대칭" style="font-size:12px;width:var(--tool-size);height:var(--tool-size);border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;">↔</button>
+      <button id="sym-v" title="상하 대칭" style="font-size:12px;width:var(--tool-size);height:var(--tool-size);border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;">↕</button>
+    </aside>
+
+    <!-- 캔버스 -->
+    <div id="canvas-area">
+      <canvas id="pixel-canvas"></canvas>
+      <div id="canvas-controls">
+        <label>확대:</label>
+        <input type="range" id="zoom-slider" min="1" max="32" value="8">
+        <span id="zoom-val">8×</span>
+        <label style="margin-left:8px;">격자</label>
+        <input type="checkbox" id="grid-toggle" checked>
+        <label style="margin-left:8px;">배경</label>
+        <select id="bg-mode" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:11px;">
+          <option value="transparent">투명</option>
+          <option value="white">흰색</option>
+          <option value="black">검정</option>
+        </select>
+        <span id="canvas-size-label" style="margin-left:auto;font-size:11px;color:var(--text2);">64×64</span>
+      </div>
+      <!-- 변환 진행 오버레이 -->
+      <div id="convert-overlay">
+        <div style="font-size:14px;color:var(--text);">변환 중...</div>
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+        <div id="progress-text">0%</div>
+      </div>
+    </div>
+
+    <!-- 우측 패널 -->
+    <aside id="rightpanel">
+      <!-- 팔레트 -->
+      <div class="panel-section">
+        <div class="panel-header">🎨 팔레트</div>
+        <div class="panel-body">
+          <select id="palette-preset"><option value="">-- 프리셋 선택 --</option></select>
+          <div id="palette-colors"></div>
+          <div class="panel-row">
+            <button id="palette-add-color">+ 색상</button>
+            <button id="palette-extract">이미지 추출</button>
+          </div>
+          <div class="panel-row">
+            <button id="palette-import">가져오기</button>
+            <button id="palette-export">내보내기</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 레이어 -->
+      <div class="panel-section" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div class="panel-header">🖼 레이어</div>
+        <div class="panel-body" style="flex:1;overflow:auto;">
+          <div id="layer-list"></div>
+          <div class="panel-row" style="margin-top:6px;">
+            <button id="layer-add">+ 레이어</button>
+            <button id="layer-delete">삭제</button>
+            <button id="layer-merge">↓ 병합</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 품질 검사 -->
+      <div class="panel-section">
+        <div class="panel-header">🔍 품질 검사</div>
+        <div class="panel-body">
+          <button id="quality-check" style="width:100%;padding:5px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px;">검사 실행</button>
+          <div id="quality-results" style="margin-top:6px;font-size:11px;"></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- 하단 프레임 바 -->
+  <footer id="bottombar">
+    <div class="bottom-controls">
+      <button id="frame-add">+ 프레임</button>
+      <button id="frame-dup">복제</button>
+      <button id="frame-del">삭제</button>
+      <button id="frame-play">▶ 재생</button>
+      <label>FPS</label>
+      <input type="range" id="fps-slider" min="1" max="60" value="12">
+      <span id="fps-val">12</span>
+      <label>어니언</label>
+      <input type="checkbox" id="onion-toggle">
+    </div>
+    <div id="frame-list"></div>
+  </footer>
+</div>
+
+<!-- 변환 설정 패널 -->
+<div id="convert-panel">
+  <h2>🔄 픽셀아트 변환</h2>
+  <div class="form-row">
+    <label>가로 (px)</label>
+    <input type="number" id="opt-width" value="64" min="8" max="256">
+  </div>
+  <div class="form-row">
+    <label>세로 (px)</label>
+    <input type="number" id="opt-height" value="64" min="8" max="256">
+  </div>
+  <div class="form-row">
+    <label>색상 수</label>
+    <input type="number" id="opt-colors" value="16" min="2" max="256">
+  </div>
+  <div class="form-row">
+    <label>디더링</label>
+    <select id="opt-dither">
+      <option value="none">없음</option>
+      <option value="bayer">Bayer</option>
+      <option value="floyd">Floyd-Steinberg</option>
+      <option value="atkinson">Atkinson</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label>Anti-Aliasing</label>
+    <input type="checkbox" id="opt-aa" checked>
+  </div>
+  <div class="form-row">
+    <label>Selective Outline</label>
+    <input type="checkbox" id="opt-outline">
+  </div>
+  <div class="form-row">
+    <label>광원 방향</label>
+    <select id="opt-light">
+      <option value="top-left">좌상단</option>
+      <option value="top-right">우상단</option>
+      <option value="bottom-left">좌하단</option>
+      <option value="bottom-right">우하단</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label>Lonely Pixel 제거</label>
+    <input type="checkbox" id="opt-lonely" checked>
+  </div>
+  <div class="form-row">
+    <label>Banding 방지</label>
+    <input type="checkbox" id="opt-banding" checked>
+  </div>
+  <div class="form-row">
+    <label>배경 자동 제거</label>
+    <input type="checkbox" id="opt-rmbg">
+  </div>
+  <div class="form-actions">
+    <button id="convert-run">변환 시작</button>
+    <button id="convert-cancel" onclick="hideConvertPanel()">취소</button>
+  </div>
+</div>
+
+<script type="module">
+  import { PixelEditor } from './src/core/editor.js';
+  import { Converter, loadImageData, DEFAULT_OPTIONS } from './src/core/converter.js';
+  import { PaletteManager } from './src/core/palette.js';
+  import { CanvasRenderer } from './src/ui/canvas.js';
+  import { ToolManager } from './src/ui/tools.js';
+  import { PanelManager } from './src/ui/panels.js';
+  import { ShortcutManager } from './src/ui/shortcuts.js';
+
+  // ─── 초기화 ─────────────────────────────────────────────────────────────────
+
+  const canvasEl = document.getElementById('pixel-canvas');
+
+  // 캔버스 크기를 부모에 맞게 설정
+  function resizeCanvas() {
+    const area = document.getElementById('canvas-area');
+    const controls = document.getElementById('canvas-controls');
+    canvasEl.width = area.clientWidth;
+    canvasEl.height = area.clientHeight - controls.offsetHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', () => { resizeCanvas(); renderer.render(); });
+
+  const editor = new PixelEditor(64, 64);
+  const converter = new Converter();
+  const paletteManager = new PaletteManager();
+  const renderer = new CanvasRenderer(canvasEl, editor);
+  const tools = new ToolManager(editor, renderer);
+  const panels = new PanelManager(editor, tools, paletteManager, renderer);
+  const shortcuts = new ShortcutManager(editor, tools).setup().setRenderer(renderer);
+
+  // 글로벌 참조 (디버깅/내보내기 버튼용)
+  window.app = { editor, converter, paletteManager, renderer, tools };
+
+  // ─── 이미지 업로드 & 변환 ──────────────────────────────────────────────────
+
+  let _pendingImageData = null;
+
+  document.getElementById('file-upload').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      _pendingImageData = await loadImageData(file);
+      showConvertPanel();
+    } catch (err) {
+      alert('이미지 로드 실패: ' + err.message);
+    }
+    e.target.value = '';
+  });
+
+  document.getElementById('convert-run').addEventListener('click', async () => {
+    if (!_pendingImageData) { alert('먼저 이미지를 열어주세요.'); return; }
+    hideConvertPanel();
+
+    const options = {
+      targetWidth: Number(document.getElementById('opt-width').value),
+      targetHeight: Number(document.getElementById('opt-height').value),
+      numColors: Number(document.getElementById('opt-colors').value),
+      dithering: document.getElementById('opt-dither').value,
+      antiAliasEnabled: document.getElementById('opt-aa').checked,
+      selectiveOutlineEnabled: document.getElementById('opt-outline').checked,
+      lightDir: document.getElementById('opt-light').value,
+      removeLonely: document.getElementById('opt-lonely').checked,
+      preventBandingEnabled: document.getElementById('opt-banding').checked,
+      removeBackgroundAuto: document.getElementById('opt-rmbg').checked,
+    };
+
+    const overlay = document.getElementById('convert-overlay');
+    const fill = document.getElementById('progress-fill');
+    const text = document.getElementById('progress-text');
+
+    overlay.classList.add('show');
+
+    try {
+      converter.onProgress(pct => {
+        fill.style.width = pct + '%';
+        text.textContent = pct + '%';
+      });
+
+      const { imageData, palette } = await converter.convert(_pendingImageData, options);
+
+      // 에디터 크기 조정
+      if (editor.width !== options.targetWidth || editor.height !== options.targetHeight) {
+        // 새 에디터로 교체
+        editor.width = options.targetWidth;
+        editor.height = options.targetHeight;
+        editor._frames = [];
+        editor.addFrame();
+        renderer._offscreen.width = editor.width;
+        renderer._offscreen.height = editor.height;
+      }
+
+      editor.insertConversionResult(imageData);
+
+      // 팔레트 업데이트
+      const pal = paletteManager.create('변환 팔레트', palette);
+      paletteManager.setCurrent(pal.id);
+      panels._renderPaletteColors(pal.colors);
+
+      document.getElementById('canvas-size-label').textContent =
+        `${editor.width}×${editor.height}`;
+
+      renderer.fitToCanvas();
+    } catch (err) {
+      alert('변환 실패: ' + err.message);
+      console.error(err);
+    } finally {
+      overlay.classList.remove('show');
+    }
+  });
+
+  // ─── 줌 슬라이더 ─────────────────────────────────────────────────────────
+
+  document.getElementById('zoom-slider').addEventListener('input', e => {
+    renderer.setZoom(Number(e.target.value));
+    document.getElementById('zoom-val').textContent = e.target.value + '×';
+  });
+
+  editor.on('pixelsChanged', () => {
+    const z = renderer.zoom;
+    document.getElementById('zoom-slider').value = z;
+    document.getElementById('zoom-val').textContent = z + '×';
+  });
+
+  // ─── 격자 토글 ────────────────────────────────────────────────────────────
+
+  document.getElementById('grid-toggle').addEventListener('change', e => {
+    renderer.showGrid = e.target.checked;
+    renderer.render();
+  });
+
+  // ─── 배경 모드 ────────────────────────────────────────────────────────────
+
+  document.getElementById('bg-mode').addEventListener('change', e => {
+    renderer.showCheckerboard = e.target.value === 'transparent';
+    const bg = e.target.value === 'white' ? '#ffffff' : e.target.value === 'black' ? '#000000' : '#111122';
+    document.getElementById('canvas-area').style.background = bg;
+    renderer.render();
+  });
+
+  // ─── 대칭 모드 ────────────────────────────────────────────────────────────
+
+  document.getElementById('sym-h').addEventListener('click', function () {
+    const modes = { null: 'horizontal', horizontal: null };
+    tools.symmetryMode = modes[tools.symmetryMode] ?? tools.symmetryMode === 'vertical' ? 'both' : 'horizontal';
+    this.classList.toggle('active', tools.symmetryMode === 'horizontal' || tools.symmetryMode === 'both');
+  });
+
+  document.getElementById('sym-v').addEventListener('click', function () {
+    const modes = { null: 'vertical', vertical: null };
+    tools.symmetryMode = modes[tools.symmetryMode] ?? tools.symmetryMode === 'horizontal' ? 'both' : 'vertical';
+    this.classList.toggle('active', tools.symmetryMode === 'vertical' || tools.symmetryMode === 'both');
+  });
+
+  // ─── 프로젝트 저장/불러오기 ────────────────────────────────────────────────
+
+  window.saveProject = () => {
+    const json = editor.serialize();
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'project.pfg';
+    a.click();
+  };
+
+  window.loadProject = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pfg,.json';
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      try {
+        editor.deserialize(await file.text());
+        renderer._offscreen.width = editor.width;
+        renderer._offscreen.height = editor.height;
+        renderer.fitToCanvas();
+        document.getElementById('canvas-size-label').textContent =
+          `${editor.width}×${editor.height}`;
+      } catch (e) {
+        alert('프로젝트 불러오기 실패: ' + e.message);
+      }
+    };
+    input.click();
+  };
+
+  window.newCanvas = () => {
+    const w = Number(prompt('가로 크기 (px):', '64'));
+    const h = Number(prompt('세로 크기 (px):', '64'));
+    if (!w || !h) return;
+    editor.width = w;
+    editor.height = h;
+    editor._frames = [];
+    editor.addFrame();
+    editor._undoStack = [];
+    editor._redoStack = [];
+    renderer._offscreen.width = w;
+    renderer._offscreen.height = h;
+    renderer.fitToCanvas();
+    document.getElementById('canvas-size-label').textContent = `${w}×${h}`;
+  };
+
+  // ─── 변환 패널 토글 ──────────────────────────────────────────────────────
+
+  window.showConvertPanel = () => {
+    document.getElementById('convert-panel').classList.add('show');
+    shortcuts.disable();
+  };
+  window.hideConvertPanel = () => {
+    document.getElementById('convert-panel').classList.remove('show');
+    shortcuts.enable();
+  };
+
+  // ESC 키로 패널 닫기
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hideConvertPanel();
+  });
+
+  // ─── 초기 렌더링 ──────────────────────────────────────────────────────────
+
+  renderer.fitToCanvas();
+  panels.renderLayers();
+  panels.renderFrames();
+</script>
+</body>
+</html>
