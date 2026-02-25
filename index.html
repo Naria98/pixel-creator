@@ -121,10 +121,11 @@
     #convert-panel {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
       background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
-      padding: 20px; width: 320px; display: none; z-index: 100; box-shadow: 0 8px 32px #000;
+      padding: 20px; width: 340px; display: none; z-index: 100; box-shadow: 0 8px 32px #000;
+      max-height: 90vh; overflow-y: auto;
     }
     #convert-panel.show { display: block; }
-    #convert-panel h2 { font-size: 15px; margin-bottom: 14px; color: var(--accent); }
+    #convert-panel h2 { font-size: 15px; margin-bottom: 12px; color: var(--accent); }
     .form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
     .form-row label { flex: 1; color: var(--text2); }
     .form-row input[type=number] { width: 60px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; }
@@ -134,6 +135,41 @@
     .form-actions button { flex: 1; padding: 7px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; }
     #convert-run { background: var(--accent); color: #fff; }
     #convert-cancel { background: var(--bg3); color: var(--text); }
+
+    /* 변환 모드 탭 */
+    .convert-tabs { display: flex; margin-bottom: 14px; border-bottom: 1px solid var(--border); gap: 0; }
+    .convert-tab {
+      flex: 1; padding: 7px 4px; background: transparent; color: var(--text2);
+      border: none; border-bottom: 2px solid transparent; cursor: pointer; font-size: 12px;
+    }
+    .convert-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+    .convert-tab:hover:not(.active) { color: var(--text); }
+
+    /* 픽셀 감지 섹션 */
+    #detect-src-info {
+      font-size: 11px; color: var(--text2); padding: 6px 8px;
+      background: var(--bg); border-radius: 4px; margin-bottom: 10px;
+      border: 1px solid var(--border);
+    }
+    #detect-result-box {
+      padding: 8px 10px; background: rgba(233,69,96,0.08);
+      border: 1px solid rgba(233,69,96,0.4); border-radius: 6px;
+      margin-bottom: 10px; font-size: 11px; line-height: 1.7; display: none;
+    }
+    #detect-result-box strong { color: var(--accent); font-size: 13px; }
+    #detect-conf-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+    #detect-conf-fill { height: 100%; background: var(--accent); transition: width 0.4s; width: 0%; }
+    #detect-auto-btn {
+      width: 100%; padding: 7px; margin-bottom: 10px;
+      background: var(--bg3); color: var(--text); border: 1px solid var(--border);
+      border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    #detect-auto-btn:hover { background: var(--accent); border-color: var(--accent); }
+    #detect-auto-btn:disabled { opacity: 0.5; cursor: wait; }
+    .detect-size-display {
+      font-size: 11px; color: var(--accent); min-width: 70px; text-align: right;
+    }
+    #detect-block-slider { width: 100%; accent-color: var(--accent); margin-top: 4px; }
 
     /* ─── 반응형 스크롤 ──────────────────────────────────────── */
     .panel-body { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -279,56 +315,122 @@
 <!-- 변환 설정 패널 -->
 <div id="convert-panel">
   <h2>🔄 픽셀아트 변환</h2>
-  <div class="form-row">
-    <label>가로 (px)</label>
-    <input type="number" id="opt-width" value="64" min="8" max="256">
+
+  <!-- 모드 탭 -->
+  <div class="convert-tabs">
+    <button class="convert-tab active" id="tab-normal-mode">일반 변환</button>
+    <button class="convert-tab" id="tab-detect-mode">📐 픽셀 감지</button>
   </div>
-  <div class="form-row">
-    <label>세로 (px)</label>
-    <input type="number" id="opt-height" value="64" min="8" max="256">
+
+  <!-- ── 일반 변환 섹션 ── -->
+  <div id="section-normal">
+    <div class="form-row">
+      <label>가로 (px)</label>
+      <input type="number" id="opt-width" value="64" min="8" max="256">
+    </div>
+    <div class="form-row">
+      <label>세로 (px)</label>
+      <input type="number" id="opt-height" value="64" min="8" max="256">
+    </div>
+    <div class="form-row">
+      <label>색상 수</label>
+      <input type="number" id="opt-colors" value="16" min="2" max="256">
+    </div>
+    <div class="form-row">
+      <label>디더링</label>
+      <select id="opt-dither">
+        <option value="none">없음</option>
+        <option value="bayer">Bayer</option>
+        <option value="floyd">Floyd-Steinberg</option>
+        <option value="atkinson">Atkinson</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Anti-Aliasing</label>
+      <input type="checkbox" id="opt-aa" checked>
+    </div>
+    <div class="form-row">
+      <label>Selective Outline</label>
+      <input type="checkbox" id="opt-outline">
+    </div>
+    <div class="form-row">
+      <label>광원 방향</label>
+      <select id="opt-light">
+        <option value="top-left">좌상단</option>
+        <option value="top-right">우상단</option>
+        <option value="bottom-left">좌하단</option>
+        <option value="bottom-right">우하단</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Lonely Pixel 제거</label>
+      <input type="checkbox" id="opt-lonely" checked>
+    </div>
+    <div class="form-row">
+      <label>Banding 방지</label>
+      <input type="checkbox" id="opt-banding" checked>
+    </div>
+    <div class="form-row">
+      <label>배경 자동 제거</label>
+      <input type="checkbox" id="opt-rmbg">
+    </div>
   </div>
-  <div class="form-row">
-    <label>색상 수</label>
-    <input type="number" id="opt-colors" value="16" min="2" max="256">
+
+  <!-- ── 픽셀 감지 섹션 ── -->
+  <div id="section-detect" style="display:none;">
+    <!-- 원본 이미지 정보 -->
+    <div id="detect-src-info">이미지를 먼저 불러오세요 (📂)</div>
+
+    <!-- 자동 감지 버튼 -->
+    <button id="detect-auto-btn">🔍 자동 감지</button>
+
+    <!-- 감지 결과 -->
+    <div id="detect-result-box">
+      <strong id="detect-block-label">블록 크기: ?px</strong><br>
+      <span id="detect-conf-text" style="color:var(--text2);">신뢰도: —</span>
+      <div id="detect-conf-bar"><div id="detect-conf-fill"></div></div>
+      <span id="detect-output-label" style="color:var(--text2);">출력: ?×?</span>
+    </div>
+
+    <!-- 블록 크기 수동 조정 -->
+    <div class="form-row">
+      <label>블록 크기 (px)</label>
+      <input type="number" id="detect-block-size" value="4" min="1" max="64" style="width:55px;">
+      <span class="detect-size-display" id="detect-size-display">→ ?×?</span>
+    </div>
+    <div class="form-row" style="margin-top:-6px;">
+      <label style="flex:none;color:var(--text2);font-size:10px;">1</label>
+      <input type="range" id="detect-block-slider" min="1" max="64" value="4">
+      <label style="flex:none;color:var(--text2);font-size:10px;">64</label>
+    </div>
+
+    <!-- 색상 추출 방식 -->
+    <div class="form-row">
+      <label>색상 추출 방식</label>
+      <select id="detect-method">
+        <option value="mode">최빈값 (권장)</option>
+        <option value="median">중앙값</option>
+        <option value="average">평균</option>
+      </select>
+    </div>
+
+    <!-- 팔레트 최적화 -->
+    <div class="form-row">
+      <label>색상 수 최적화</label>
+      <input type="checkbox" id="detect-quantize" checked>
+    </div>
+    <div class="form-row" id="detect-colors-row">
+      <label>색상 수</label>
+      <input type="number" id="detect-colors" value="16" min="2" max="256">
+    </div>
+
+    <!-- Lonely Pixel -->
+    <div class="form-row">
+      <label>Lonely Pixel 제거</label>
+      <input type="checkbox" id="detect-lonely" checked>
+    </div>
   </div>
-  <div class="form-row">
-    <label>디더링</label>
-    <select id="opt-dither">
-      <option value="none">없음</option>
-      <option value="bayer">Bayer</option>
-      <option value="floyd">Floyd-Steinberg</option>
-      <option value="atkinson">Atkinson</option>
-    </select>
-  </div>
-  <div class="form-row">
-    <label>Anti-Aliasing</label>
-    <input type="checkbox" id="opt-aa" checked>
-  </div>
-  <div class="form-row">
-    <label>Selective Outline</label>
-    <input type="checkbox" id="opt-outline">
-  </div>
-  <div class="form-row">
-    <label>광원 방향</label>
-    <select id="opt-light">
-      <option value="top-left">좌상단</option>
-      <option value="top-right">우상단</option>
-      <option value="bottom-left">좌하단</option>
-      <option value="bottom-right">우하단</option>
-    </select>
-  </div>
-  <div class="form-row">
-    <label>Lonely Pixel 제거</label>
-    <input type="checkbox" id="opt-lonely" checked>
-  </div>
-  <div class="form-row">
-    <label>Banding 방지</label>
-    <input type="checkbox" id="opt-banding" checked>
-  </div>
-  <div class="form-row">
-    <label>배경 자동 제거</label>
-    <input type="checkbox" id="opt-rmbg">
-  </div>
+
   <div class="form-actions">
     <button id="convert-run">변환 시작</button>
     <button id="convert-cancel" onclick="hideConvertPanel()">취소</button>
@@ -343,6 +445,7 @@
   import { ToolManager } from './src/ui/tools.js';
   import { PanelManager } from './src/ui/panels.js';
   import { ShortcutManager } from './src/ui/shortcuts.js';
+  import { detectBlockSize } from './src/algorithms/blockdetect.js';
 
   // ─── 초기화 ─────────────────────────────────────────────────────────────────
 
@@ -378,6 +481,9 @@
     if (!file) return;
     try {
       _pendingImageData = await loadImageData(file);
+      // 감지 결과 초기화 (새 이미지 로드 시)
+      document.getElementById('detect-result-box').style.display = 'none';
+      document.getElementById('detect-conf-fill').style.width = '0%';
       showConvertPanel();
     } catch (err) {
       alert('이미지 로드 실패: ' + err.message);
@@ -385,59 +491,167 @@
     e.target.value = '';
   });
 
-  document.getElementById('convert-run').addEventListener('click', async () => {
+  // ─── 변환 모드 탭 스위치 ────────────────────────────────────────────────────
+
+  let _convertMode = 'normal'; // 'normal' | 'detect'
+
+  document.getElementById('tab-normal-mode').addEventListener('click', () => switchConvertMode('normal'));
+  document.getElementById('tab-detect-mode').addEventListener('click', () => switchConvertMode('detect'));
+
+  function switchConvertMode(mode) {
+    _convertMode = mode;
+    const isDetect = mode === 'detect';
+    document.getElementById('tab-normal-mode').classList.toggle('active', !isDetect);
+    document.getElementById('tab-detect-mode').classList.toggle('active', isDetect);
+    document.getElementById('section-normal').style.display = isDetect ? 'none' : '';
+    document.getElementById('section-detect').style.display = isDetect ? '' : 'none';
+  }
+
+  // ─── 픽셀 감지 UI 로직 ──────────────────────────────────────────────────────
+
+  function updateDetectSrcInfo() {
+    if (!_pendingImageData) return;
+    document.getElementById('detect-src-info').textContent =
+      `원본 크기: ${_pendingImageData.width} × ${_pendingImageData.height}px`;
+  }
+
+  function updateDetectOutputSize() {
+    if (!_pendingImageData) return;
+    const b = Math.max(1, Number(document.getElementById('detect-block-size').value) || 1);
+    const outW = Math.max(1, Math.round(_pendingImageData.width / b));
+    const outH = Math.max(1, Math.round(_pendingImageData.height / b));
+    document.getElementById('detect-size-display').textContent = `→ ${outW}×${outH}`;
+  }
+
+  // 자동 감지 버튼
+  document.getElementById('detect-auto-btn').addEventListener('click', () => {
     if (!_pendingImageData) { alert('먼저 이미지를 열어주세요.'); return; }
-    hideConvertPanel();
 
-    const options = {
-      targetWidth: Number(document.getElementById('opt-width').value),
-      targetHeight: Number(document.getElementById('opt-height').value),
-      numColors: Number(document.getElementById('opt-colors').value),
-      dithering: document.getElementById('opt-dither').value,
-      antiAliasEnabled: document.getElementById('opt-aa').checked,
-      selectiveOutlineEnabled: document.getElementById('opt-outline').checked,
-      lightDir: document.getElementById('opt-light').value,
-      removeLonely: document.getElementById('opt-lonely').checked,
-      preventBandingEnabled: document.getElementById('opt-banding').checked,
-      removeBackgroundAuto: document.getElementById('opt-rmbg').checked,
-    };
+    const btn = document.getElementById('detect-auto-btn');
+    btn.textContent = '⏳ 감지 중...';
+    btn.disabled = true;
 
-    const overlay = document.getElementById('convert-overlay');
-    const fill = document.getElementById('progress-fill');
-    const text = document.getElementById('progress-text');
+    // 다음 렌더 프레임에서 실행 (UI 업데이트 후 무거운 연산)
+    requestAnimationFrame(() => setTimeout(() => {
+      const { blockSize, confidence, candidates } = detectBlockSize(_pendingImageData);
 
-    overlay.classList.add('show');
+      // 블록 크기 입력 업데이트
+      document.getElementById('detect-block-size').value = blockSize;
+      document.getElementById('detect-block-slider').value = Math.min(64, blockSize);
+      updateDetectOutputSize();
 
-    try {
-      converter.onProgress(pct => {
-        fill.style.width = pct + '%';
-        text.textContent = pct + '%';
-      });
+      // 결과 표시
+      const pct = Math.round(confidence * 100);
+      const confLevel = pct >= 70 ? '높음 ✓' : pct >= 40 ? '보통' : '낮음 (수동 조정 권장)';
+      const outW = Math.max(1, Math.round(_pendingImageData.width / blockSize));
+      const outH = Math.max(1, Math.round(_pendingImageData.height / blockSize));
 
-      const { imageData, palette } = await converter.convert(_pendingImageData, options);
+      document.getElementById('detect-block-label').textContent = `블록 크기: ${blockSize}px`;
+      document.getElementById('detect-conf-text').textContent = `신뢰도: ${confLevel} (${pct}%)`;
+      document.getElementById('detect-conf-fill').style.width = pct + '%';
+      document.getElementById('detect-output-label').textContent = `출력 크기: ${outW} × ${outH}px`;
+      document.getElementById('detect-result-box').style.display = '';
 
-      // 에디터 크기 조정
-      if (editor.width !== options.targetWidth || editor.height !== options.targetHeight) {
-        // 새 에디터로 교체
-        editor.width = options.targetWidth;
-        editor.height = options.targetHeight;
-        editor._frames = [];
-        editor.addFrame();
-        renderer._offscreen.width = editor.width;
-        renderer._offscreen.height = editor.height;
+      // 상위 후보 로그 (개발자 확인용)
+      if (candidates.length) {
+        console.log('[픽셀 감지] 상위 후보:', candidates.map(c => `b=${c.size}(${(c.score*100).toFixed(0)}%)`).join(', '));
       }
 
-      editor.insertConversionResult(imageData);
+      btn.textContent = '🔍 자동 감지';
+      btn.disabled = false;
+    }, 0));
+  });
 
-      // 팔레트 업데이트
+  // 블록 크기 숫자 ↔ 슬라이더 동기화
+  document.getElementById('detect-block-size').addEventListener('input', () => {
+    const v = document.getElementById('detect-block-size').value;
+    document.getElementById('detect-block-slider').value = Math.min(64, v);
+    updateDetectOutputSize();
+  });
+  document.getElementById('detect-block-slider').addEventListener('input', () => {
+    const v = document.getElementById('detect-block-slider').value;
+    document.getElementById('detect-block-size').value = v;
+    updateDetectOutputSize();
+  });
+
+  // 색상 최적화 체크박스 토글
+  document.getElementById('detect-quantize').addEventListener('change', e => {
+    document.getElementById('detect-colors-row').style.display = e.target.checked ? '' : 'none';
+  });
+
+  // ─── 공통 변환 결과 적용 헬퍼 ───────────────────────────────────────────────
+
+  async function applyConversionResult(imageData, palette, targetW, targetH) {
+    if (editor.width !== targetW || editor.height !== targetH) {
+      editor.width = targetW;
+      editor.height = targetH;
+      editor._frames = [];
+      editor.addFrame();
+      renderer._offscreen.width = targetW;
+      renderer._offscreen.height = targetH;
+    }
+    editor.insertConversionResult(imageData);
+    if (palette && palette.length) {
       const pal = paletteManager.create('변환 팔레트', palette);
       paletteManager.setCurrent(pal.id);
       panels._renderPaletteColors(pal.colors);
+    }
+    document.getElementById('canvas-size-label').textContent = `${targetW}×${targetH}`;
+    renderer.fitToCanvas();
+  }
 
-      document.getElementById('canvas-size-label').textContent =
-        `${editor.width}×${editor.height}`;
+  // ─── 변환 시작 ───────────────────────────────────────────────────────────────
 
-      renderer.fitToCanvas();
+  document.getElementById('convert-run').addEventListener('click', async () => {
+    if (!_pendingImageData) { alert('먼저 이미지를 열어주세요.'); return; }
+
+    const overlay = document.getElementById('convert-overlay');
+    const fill    = document.getElementById('progress-fill');
+    const text    = document.getElementById('progress-text');
+
+    converter.onProgress(pct => {
+      fill.style.width = pct + '%';
+      text.textContent = pct + '%';
+    });
+
+    hideConvertPanel();
+    overlay.classList.add('show');
+
+    try {
+      if (_convertMode === 'detect') {
+        // ── 픽셀 감지 변환 ──────────────────────────────────────────
+        const blockSize  = Math.max(1, Number(document.getElementById('detect-block-size').value) || 4);
+        const method     = document.getElementById('detect-method').value;
+        const applyPalette = document.getElementById('detect-quantize').checked;
+        const numColors  = Number(document.getElementById('detect-colors').value) || 16;
+        const removeLonely = document.getElementById('detect-lonely').checked;
+
+        const outW = Math.max(1, Math.round(_pendingImageData.width  / blockSize));
+        const outH = Math.max(1, Math.round(_pendingImageData.height / blockSize));
+
+        const { imageData, palette } = await converter.truePixelize(_pendingImageData, {
+          blockSize, method, applyPalette, numColors, removeLonely,
+        });
+
+        await applyConversionResult(imageData, palette, outW, outH);
+
+      } else {
+        // ── 일반 변환 ────────────────────────────────────────────────
+        const options = {
+          targetWidth:  Number(document.getElementById('opt-width').value),
+          targetHeight: Number(document.getElementById('opt-height').value),
+          numColors:    Number(document.getElementById('opt-colors').value),
+          dithering:    document.getElementById('opt-dither').value,
+          antiAliasEnabled:       document.getElementById('opt-aa').checked,
+          selectiveOutlineEnabled: document.getElementById('opt-outline').checked,
+          lightDir:               document.getElementById('opt-light').value,
+          removeLonely:           document.getElementById('opt-lonely').checked,
+          preventBandingEnabled:  document.getElementById('opt-banding').checked,
+          removeBackgroundAuto:   document.getElementById('opt-rmbg').checked,
+        };
+        const { imageData, palette } = await converter.convert(_pendingImageData, options);
+        await applyConversionResult(imageData, palette, options.targetWidth, options.targetHeight);
+      }
     } catch (err) {
       alert('변환 실패: ' + err.message);
       console.error(err);
@@ -542,6 +756,8 @@
   window.showConvertPanel = () => {
     document.getElementById('convert-panel').classList.add('show');
     shortcuts.disable();
+    updateDetectSrcInfo();
+    updateDetectOutputSize();
   };
   window.hideConvertPanel = () => {
     document.getElementById('convert-panel').classList.remove('show');

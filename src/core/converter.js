@@ -42,6 +42,22 @@ export class Converter {
     });
   }
 
+  /**
+   * 업스케일된 픽셀아트를 진짜 픽셀 크기로 변환 (픽셀 감지 모드)
+   * @param {ImageData} imageData  - 원본 (업스케일된) 이미지
+   * @param {object} options       - { blockSize, method, applyPalette, numColors, removeLonely }
+   * @returns {Promise<{imageData, palette}>}
+   */
+  truePixelize(imageData, options) {
+    return new Promise((resolve, reject) => {
+      this._initWorker();
+      this._onDone = (result, palette) => resolve({ imageData: result, palette });
+      this._onError = (msg) => reject(new Error(msg));
+      const transferable = imageData.data.buffer.byteLength > 0 ? [imageData.data.buffer] : [];
+      this._worker.postMessage({ type: 'truePixelize', imageData, options }, transferable);
+    });
+  }
+
   onProgress(cb) { this._onProgress = cb; return this; }
 
   cancel() {
