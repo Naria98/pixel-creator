@@ -122,25 +122,47 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
       const endY = Math.min(startY + blockH, height);
 
       let r = 0, g = 0, b = 0, a = 0, count = 0;
+      // 엣지 픽셀과 비엣지 픽셀을 분리 집계 — 외곽선 색상 우선 선택에 사용
+      let er = 0, eg = 0, eb = 0, eCount = 0;
+      let nr = 0, ng = 0, nb = 0, nCount = 0;
 
       for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
           const idx = y * width + x;
+          const i = idx * 4;
           const w = edges[idx] ? edgeWeight : 1;
-          r += data[idx * 4] * w;
-          g += data[idx * 4 + 1] * w;
-          b += data[idx * 4 + 2] * w;
-          a += data[idx * 4 + 3] * w;
+          r += data[i] * w; g += data[i + 1] * w;
+          b += data[i + 2] * w; a += data[i + 3] * w;
           count += w;
+          if (edges[idx]) {
+            er += data[i]; eg += data[i + 1]; eb += data[i + 2]; eCount++;
+          } else {
+            nr += data[i]; ng += data[i + 1]; nb += data[i + 2]; nCount++;
+          }
         }
       }
 
       const tidx = (ty * targetWidth + tx) * 4;
       if (count > 0) {
-        result[tidx] = r / count;
-        result[tidx + 1] = g / count;
-        result[tidx + 2] = b / count;
-        result[tidx + 3] = a / count;
+        // 블록 내 엣지 픽셀이 비엣지보다 40+ 어두우면 외곽선으로 판단 → 엣지 색상 사용
+        // 단순 가중치 평균(2×)은 4×4 블록에서 1개 어두운 픽셀이 15개에 묻혀 소실되는 문제 해결
+        let useEdge = false;
+        if (eCount > 0 && nCount > 0) {
+          const eLum = (0.299 * er + 0.587 * eg + 0.114 * eb) / eCount;
+          const nLum = (0.299 * nr + 0.587 * ng + 0.114 * nb) / nCount;
+          useEdge = (nLum - eLum) > 40;
+        }
+        if (useEdge) {
+          result[tidx]     = Math.round(er / eCount);
+          result[tidx + 1] = Math.round(eg / eCount);
+          result[tidx + 2] = Math.round(eb / eCount);
+          result[tidx + 3] = 255;
+        } else {
+          result[tidx]     = Math.round(r / count);
+          result[tidx + 1] = Math.round(g / count);
+          result[tidx + 2] = Math.round(b / count);
+          result[tidx + 3] = Math.round(a / count);
+        }
       }
     }
   }
