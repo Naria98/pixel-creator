@@ -87,14 +87,16 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
   const { data, width, height } = imageData;
 
   // 축소 비율이 6×를 초과하면 단계적 다운샘플링:
-  //   512→32 (비율 16): 512→128(4×4블록) → 128→32(4×4블록)
-  //   한 번에 16×16 블록을 평균하면 지배색이 희석돼 이미지가 뭉개짐
+  //   중간 단계는 반드시 boxDownsample(단순 평균) 사용
+  //   sobelDownsample을 재귀 호출하면 두 단계 모두 엣지 가중치 2×가
+  //   누적되어 64px에서 외곽선이 오히려 더 두꺼워지는 역효과 발생
+  //   → 박스 필터로 공간 정보만 축소 후 최종 단계에서만 Sobel 가이드 적용
   const maxRatio = Math.max(width / targetWidth, height / targetHeight);
   if (maxRatio > 6) {
     const midW = Math.round(targetWidth * 4);
     const midH = Math.round(targetHeight * 4);
     if (midW < width && midH < height) {
-      const intermediate = sobelDownsample(imageData, midW, midH);
+      const intermediate = boxDownsample(imageData, midW, midH);
       return sobelDownsample(intermediate, targetWidth, targetHeight);
     }
   }
@@ -143,5 +145,42 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
     }
   }
 
+  return new ImageData(result, targetWidth, targetHeight);
+}
+
+/**
+ * 단순 박스 필터 다운샘플링 — 엣지 가중치 없이 균일 평균
+ * sobelDownsample의 중간 단계 전처리 전용:
+ *   큰 소스를 먼저 공간적으로 축소해 sobelDownsample의 블록 크기를
+ *   4px 이하로 맞춤 → 엣지 가중치 누적 없이 깨끗한 중간 이미지 생성
+ */
+function boxDownsample(imageData, targetWidth, targetHeight) {
+  const { data, width, height } = imageData;
+  const blockW = Math.ceil(width / targetWidth);
+  const blockH = Math.ceil(height / targetHeight);
+  const result = new Uint8ClampedArray(targetWidth * targetHeight * 4);
+
+  for (let ty = 0; ty < targetHeight; ty++) {
+    for (let tx = 0; tx < targetWidth; tx++) {
+      const startX = tx * blockW;
+      const startY = ty * blockH;
+      const endX = Math.min(startX + blockW, width);
+      const endY = Math.min(startY + blockH, height);
+
+      let r = 0, g = 0, b = 0, a = 0, count = 0;
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          const i = (y * width + x) * 4;
+          r += data[i]; g += data[i + 1]; b += data[i + 2]; a += data[i + 3];
+          count++;
+        }
+      }
+      const ti = (ty * targetWidth + tx) * 4;
+      if (count > 0) {
+        result[ti] = r / count; result[ti + 1] = g / count;
+        result[ti + 2] = b / count; result[ti + 3] = a / count;
+      }
+    }
+  }
   return new ImageData(result, targetWidth, targetHeight);
 }
