@@ -50,8 +50,7 @@ async function convert(imageData, opts, onProgress) {
   // 2단계: 배경 자동 제거 (선택)
   if (removeBackgroundAuto) {
     const dataCopy = new Uint8ClampedArray(current.data);
-    const { removeBackground: rmBg } = await import('../algorithms/floodfill.js');
-    rmBg(dataCopy, current.width, current.height, 40);
+    removeBackground(dataCopy, current.width, current.height, 40);
     current = new ImageData(dataCopy, current.width, current.height);
   }
   onProgress(30);

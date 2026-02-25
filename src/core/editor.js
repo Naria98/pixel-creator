@@ -362,7 +362,7 @@ export class PixelEditor {
       gif.addFrame(canvas, { delay });
     }
 
-    this._activeFrameIdx = savedActive;
+    this._activeFrameIdx = savedFrame;
 
     return new Promise(resolve => {
       gif.on('finished', blob => {
