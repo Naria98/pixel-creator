@@ -103,8 +103,8 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
       for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
           const idx = y * width + x;
-          // 엣지 픽셀은 가중치 3배
-          const w = edges[idx] ? 3 : 1;
+          // 엣지 픽셀 가중치 2× (기존 3×에서 감소 — 외곽색이 블록 전체를 오염시키는 현상 완화)
+          const w = edges[idx] ? 2 : 1;
           r += data[idx * 4] * w;
           g += data[idx * 4 + 1] * w;
           b += data[idx * 4 + 2] * w;

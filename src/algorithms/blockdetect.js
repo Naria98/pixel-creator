@@ -187,12 +187,20 @@ export function truePixelize(imageData, blockSize, method = 'mode') {
       const x1 = Math.min(x0 + b, width);
       const y1 = Math.min(y0 + b, height);
 
+      // 블록 경계부 안티앨리어싱 픽셀 제외 (b ≥ 4일 때 1픽셀 여백)
+      // → 인접 블록의 색상이 오염되어 외곽선이 두꺼워지는 현상 방지
+      const margin = b >= 4 ? 1 : 0;
+      const sx0 = Math.min(x0 + margin, x1 - 1);
+      const sy0 = Math.min(y0 + margin, y1 - 1);
+      const sx1 = Math.max(x1 - margin, sx0 + 1);
+      const sy1 = Math.max(y1 - margin, sy0 + 1);
+
       // 블록 내 불투명 픽셀 수집
       const rs = [], gs = [], bs = [];
       let total = 0;
 
-      for (let y = y0; y < y1; y++) {
-        for (let x = x0; x < x1; x++) {
+      for (let y = sy0; y < sy1; y++) {
+        for (let x = sx0; x < sx1; x++) {
           const i = (y * width + x) * 4;
           total++;
           if (data[i + 3] > 128) {

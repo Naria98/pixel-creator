@@ -32,11 +32,27 @@ function blendColor(p1, p2) {
   };
 }
 
+/** 25% 약한 혼합 — 라인 두께 증가를 막기 위해 사용 */
+function blendColorWeak(p1, p2) {
+  return {
+    r: Math.round(p1.r * 0.75 + p2.r * 0.25),
+    g: Math.round(p1.g * 0.75 + p2.g * 0.25),
+    b: Math.round(p1.b * 0.75 + p2.b * 0.25),
+    a: 255,
+  };
+}
+
 // ─── Anti-Aliasing ────────────────────────────────────────────────────────────
 
 /**
- * 경계 픽셀에 중간색 삽입
- * - 45도 직선, 수직/수평선은 스킵 (의도적인 픽셀아트 선 보존)
+ * 대각선 계단(staircase) 전환만 부드럽게 처리 — 라인 두께는 보존
+ *
+ * 개선 포인트:
+ *  - 기존: 4방향 중 2개 이상이 다르면 50% 혼합 → 직선·외곽선도 번짐
+ *  - 변경: 정확히 2방향이 다르고 서로 마주보지 않는 경우(=대각 코너)만 25% 혼합
+ *    · N+S 또는 E+W 방향이 다른 경우 → 직선 경계 → 스킵
+ *    · 45도 연속 대각선 → 스킵
+ *    · 나머지 코너 패턴만 약하게 블렌딩
  */
 export function antiAlias(imageData) {
   const { data, width, height } = imageData;
@@ -47,30 +63,34 @@ export function antiAlias(imageData) {
       const center = getPixel(data, width, height, x, y);
       if (!center) continue;
 
-      const n = getPixel(data, width, height, x, y - 1);
-      const s = getPixel(data, width, height, x, y + 1);
+      const n = getPixel(data, width, height, x,     y - 1);
+      const s = getPixel(data, width, height, x,     y + 1);
       const e = getPixel(data, width, height, x + 1, y);
       const w = getPixel(data, width, height, x - 1, y);
 
-      // 이미 수직/수평 선상이면 스킵
-      if (n && s && colorEqual(n, center) && colorEqual(s, center)) continue;
-      if (e && w && colorEqual(e, center) && colorEqual(w, center)) continue;
+      const nDiff = n && !colorEqual(n, center);
+      const sDiff = s && !colorEqual(s, center);
+      const eDiff = e && !colorEqual(e, center);
+      const wDiff = w && !colorEqual(w, center);
+      const diffCount = [nDiff, sDiff, eDiff, wDiff].filter(Boolean).length;
 
-      // 45도 대각선 체크
+      // 대각 코너 패턴만 처리: 정확히 두 방향, 마주보지 않아야 함
+      if (diffCount !== 2) continue;
+      if (nDiff && sDiff) continue; // 수평 경계선 (직선) → 스킵
+      if (eDiff && wDiff) continue; // 수직 경계선 (직선) → 스킵
+
+      // 45도 연속 대각선 보존
       const ne = getPixel(data, width, height, x + 1, y - 1);
       const sw = getPixel(data, width, height, x - 1, y + 1);
       const nw = getPixel(data, width, height, x - 1, y - 1);
       const se = getPixel(data, width, height, x + 1, y + 1);
-
       if (ne && sw && colorEqual(ne, center) && colorEqual(sw, center)) continue;
       if (nw && se && colorEqual(nw, center) && colorEqual(se, center)) continue;
 
-      // 경계 픽셀 탐지: 주변 4방향 중 2개 이상이 다른 색
-      const neighbors = [n, s, e, w].filter(p => p && !colorEqual(p, center));
-      if (neighbors.length >= 2) {
-        const blend = blendColor(center, neighbors[0]);
-        setPixel(result, width, x, y, blend.r, blend.g, blend.b, 255);
-      }
+      // 이웃한 두 외부 픽셀 중 첫 번째로 25% 약하게 혼합
+      const foreign = nDiff ? n : sDiff ? s : eDiff ? e : w;
+      const blend = blendColorWeak(center, foreign);
+      setPixel(result, width, x, y, blend.r, blend.g, blend.b, 255);
     }
   }
 
