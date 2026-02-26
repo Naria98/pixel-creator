@@ -177,42 +177,94 @@ export class PanelManager {
     if (pico8) { this.palette.setCurrent(pico8.id); this._renderPaletteColors(pico8.colors); }
   }
 
-  /** 현재 레이어의 모든 색상을 선택된 팔레트의 가장 가까운 색상으로 교체 */
+  /**
+   * 명도 비례 팔레트 리맵
+   *
+   * 1) 이미지의 고유 색상을 수집하고 각각 가장 가까운 팔레트 색(LAB)을 찾음
+   * 2) 같은 팔레트 색으로 매핑되는 그룹(=쉐이딩이 뭉개지는 충돌 그룹)을 식별
+   * 3) 충돌 그룹 내에서 색상(a,b) 유사성 + 명도(L) 근접성을 함께 고려하여
+   *    밝은 소스→밝은 팔레트, 어두운 소스→어두운 팔레트로 분산 매핑
+   */
   _remapToPalette() {
     const pal = this.palette.getCurrent();
     if (!pal || !pal.colors.length) { alert('먼저 팔레트를 선택하세요.'); return; }
     const layer = this.editor.activeLayer;
     if (!layer) return;
 
-    const labPalette = pal.colors.map(c => ({ lab: rgbToLab(c.r, c.g, c.b), rgb: c }));
     const { width, height } = this.editor;
+    const palLab = pal.colors.map(c => ({ lab: rgbToLab(c.r, c.g, c.b), rgb: c }));
 
-    // LAB 매핑 캐시 (동일 RGB → 동일 결과이므로 중복 계산 방지)
-    const cache = new Map();
+    // ── 1단계: 고유 색상 수집 ──
+    const uniqueColors = new Map();
+    for (let i = 0; i < width * height; i++) {
+      const idx = i * 4;
+      if (layer.data[idx + 3] < 128) continue;
+      const r = layer.data[idx], g = layer.data[idx + 1], b = layer.data[idx + 2];
+      const key = (r << 16) | (g << 8) | b;
+      if (!uniqueColors.has(key)) {
+        uniqueColors.set(key, { r, g, b, lab: rgbToLab(r, g, b) });
+      }
+    }
 
+    // ── 2단계: nearest palette로 그룹화 ──
+    const groups = new Map();
+    for (const [key, src] of uniqueColors) {
+      let minD = Infinity, bestIdx = 0;
+      for (let i = 0; i < palLab.length; i++) {
+        const d = labDistance(src.lab, palLab[i].lab);
+        if (d < minD) { minD = d; bestIdx = i; }
+      }
+      if (!groups.has(bestIdx)) groups.set(bestIdx, []);
+      groups.get(bestIdx).push({ key, ...src });
+    }
+
+    // ── 3단계: 충돌 그룹 명도 분산 매핑 ──
+    const finalMapping = new Map();
+
+    for (const [palIdx, sources] of groups) {
+      // 충돌 없는 단일 색상 → 그대로 매핑
+      if (sources.length === 1) {
+        finalMapping.set(sources[0].key, palLab[palIdx].rgb);
+        continue;
+      }
+
+      // 명도 범위가 미미하면(ΔL < 5) 분산 불필요
+      const lums = sources.map(s => s.lab.L);
+      const lRange = Math.max(...lums) - Math.min(...lums);
+      if (lRange < 5) {
+        for (const src of sources) finalMapping.set(src.key, palLab[palIdx].rgb);
+        continue;
+      }
+
+      // 기준 팔레트 색의 색상(a,b) = 이 그룹의 "색조 앵커"
+      const baseAB = palLab[palIdx].lab;
+
+      for (const src of sources) {
+        let bestScore = Infinity, bestRgb = palLab[palIdx].rgb;
+        for (const p of palLab) {
+          // 색조(a,b) 유사성: 기준 팔레트 색 대비 얼마나 비슷한 톤인지
+          const da = p.lab.a - baseAB.a, db = p.lab.b - baseAB.b;
+          const chromaDist = Math.sqrt(da * da + db * db);
+          // 명도 근접성: 소스 원본 밝기에 가까운 팔레트 색 선호
+          const lumDist = Math.abs(p.lab.L - src.lab.L);
+          // 색조 50% + 명도 50%  →  같은 톤 유지하면서 밝기 단계 보존
+          const score = chromaDist * 0.5 + lumDist * 0.5;
+          if (score < bestScore) { bestScore = score; bestRgb = p.rgb; }
+        }
+        finalMapping.set(src.key, bestRgb);
+      }
+    }
+
+    // ── 4단계: 매핑 적용 (Undo 지원) ──
     this.editor.beginStroke();
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const idx = (y * width + x) * 4;
         if (layer.data[idx + 3] < 128) continue;
-
         const r = layer.data[idx], g = layer.data[idx + 1], b = layer.data[idx + 2];
         const key = (r << 16) | (g << 8) | b;
-
-        let best;
-        if (cache.has(key)) {
-          best = cache.get(key);
-        } else {
-          const lab = rgbToLab(r, g, b);
-          let minD = Infinity;
-          for (const { lab: pl, rgb } of labPalette) {
-            const d = labDistance(lab, pl);
-            if (d < minD) { minD = d; best = rgb; }
-          }
-          cache.set(key, best);
-        }
-
-        if (best.r !== r || best.g !== g || best.b !== b) {
+        const best = finalMapping.get(key);
+        if (best && (best.r !== r || best.g !== g || best.b !== b)) {
           this.editor.setPixel(x, y, best.r, best.g, best.b, 255);
         }
       }
