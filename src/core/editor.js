@@ -198,6 +198,7 @@ export class PixelEditor {
       this._deltaMap = null;
       return;
     }
+    console.log(`[endStroke] ${this._currentDelta.length}px 기록, layer=${this._activeLayerIdx}`);
     this._pushUndo({ type: 'stroke', layerIdx: this._activeLayerIdx, pixels: this._currentDelta });
     this._currentDelta = null;
     this._deltaMap = null;
@@ -213,8 +214,9 @@ export class PixelEditor {
   }
 
   undo() {
-    if (this._undoStack.length === 0) return;
+    if (this._undoStack.length === 0) { console.log('[undo] 스택 비어있음'); return; }
     const delta = this._undoStack.pop();
+    console.log(`[undo] type=${delta.type}, pixels=${delta.pixels?.length ?? 'N/A'}, layer=${delta.layerIdx ?? 'N/A'}, 남은스택=${this._undoStack.length}`);
     this._applyDelta(delta, 'before');
     this._redoStack.push(delta);
     this.emit('historyChanged');
