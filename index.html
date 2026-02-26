@@ -475,6 +475,7 @@
   const editor = new PixelEditor(64, 64);
   const converter = new Converter();
   const paletteManager = new PaletteManager();
+  await paletteManager.loadPresets();
   const renderer = new CanvasRenderer(canvasEl, editor);
   const tools = new ToolManager(editor, renderer);
   const panels = new PanelManager(editor, tools, paletteManager, renderer);

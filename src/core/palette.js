@@ -1,62 +1,10 @@
 /**
  * 팔레트 시스템 — LocalStorage 저장/불러오기, .hex/.pal 파일 import/export
+ * 프리셋은 assets/palettes/manifest.json + .hex 파일에서 비동기 로드
  */
 
 const STORAGE_KEY = 'pixelforge_palettes';
-
-// ─── 프리셋 팔레트 ────────────────────────────────────────────────────────────
-
-export const PRESETS = {
-  gameboy: {
-    id: 'preset_gameboy',
-    name: 'Game Boy',
-    isPreset: true,
-    colors: ['#0f380f', '#306230', '#8bac0f', '#9bbc0f'].map(hexToRgb),
-  },
-  nes: {
-    id: 'preset_nes',
-    name: 'NES',
-    isPreset: true,
-    colors: [
-      '#7c7c7c','#0000fc','#0000bc','#4428bc','#940084','#a80020','#a81000','#881400',
-      '#503000','#007800','#006800','#005800','#004058','#000000','#000000','#000000',
-      '#bcbcbc','#0078f8','#0058f8','#6844fc','#d800cc','#e40058','#f83800','#e45c10',
-      '#ac7c00','#00b800','#00a800','#00a844','#008888','#000000','#000000','#000000',
-      '#f8f8f8','#3cbcfc','#6888fc','#9878f8','#f878f8','#f85898','#f87858','#fca044',
-      '#f8b800','#b8f818','#58d854','#58f898','#00e8d8','#787878','#000000','#000000',
-      '#fcfcfc','#a4e4fc','#b8b8f8','#d8b8f8','#f8b8f8','#f8a4c0','#f0d0b0','#fce0a8',
-      '#f8d878','#d8f878','#b8f8b8','#b8f8d8','#00fcfc','#f8d8f8','#000000','#000000',
-    ].map(hexToRgb),
-  },
-  cga: {
-    id: 'preset_cga',
-    name: 'CGA',
-    isPreset: true,
-    colors: [
-      '#000000','#0000aa','#00aa00','#00aaaa',
-      '#aa0000','#aa00aa','#aa5500','#aaaaaa',
-      '#555555','#5555ff','#55ff55','#55ffff',
-      '#ff5555','#ff55ff','#ffff55','#ffffff',
-    ].map(hexToRgb),
-  },
-  pico8: {
-    id: 'preset_pico8',
-    name: 'PICO-8',
-    isPreset: true,
-    colors: [
-      '#000000','#1d2b53','#7e2553','#008751',
-      '#ab5236','#5f574f','#c2c3c7','#fff1e8',
-      '#ff004d','#ffa300','#ffec27','#00e436',
-      '#29adff','#83769c','#ff77a8','#ffccaa',
-    ].map(hexToRgb),
-  },
-  mono: {
-    id: 'preset_mono',
-    name: '흑백',
-    isPreset: true,
-    colors: ['#000000', '#ffffff'].map(hexToRgb),
-  },
-};
+const PALETTES_DIR = 'assets/palettes/';
 
 // ─── 색상 변환 헬퍼 ───────────────────────────────────────────────────────────
 
@@ -78,7 +26,34 @@ export function rgbToHex({ r, g, b }) {
 export class PaletteManager {
   constructor() {
     this._palettes = this._load();
+    this._presets = [];
     this._current = null;
+  }
+
+  /** manifest.json → .hex 파일들을 fetch하여 프리셋 로드 */
+  async loadPresets() {
+    try {
+      const res = await fetch(PALETTES_DIR + 'manifest.json');
+      if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`);
+      const manifest = await res.json();
+
+      const results = await Promise.all(
+        manifest.map(async (entry) => {
+          const hexRes = await fetch(PALETTES_DIR + entry.file);
+          if (!hexRes.ok) return null;
+          const text = await hexRes.text();
+          const colors = this.parseHex(text);
+          if (!colors.length) return null;
+          const id = 'preset_' + entry.file.replace('.hex', '');
+          return { id, name: entry.name, isPreset: true, colors };
+        })
+      );
+
+      this._presets = results.filter(Boolean);
+    } catch (e) {
+      console.warn('프리셋 로드 실패:', e);
+      this._presets = [];
+    }
   }
 
   _load() {
@@ -97,11 +72,11 @@ export class PaletteManager {
   }
 
   getAll() {
-    return [...Object.values(PRESETS), ...this._palettes];
+    return [...this._presets, ...this._palettes];
   }
 
   getUserPalettes() { return [...this._palettes]; }
-  getPresets() { return Object.values(PRESETS); }
+  getPresets() { return [...this._presets]; }
 
   create(name, colors) {
     const palette = {
@@ -130,7 +105,7 @@ export class PaletteManager {
   }
 
   getById(id) {
-    return PRESETS[id.replace('preset_', '')] || this._palettes.find(p => p.id === id) || null;
+    return this._presets.find(p => p.id === id) || this._palettes.find(p => p.id === id) || null;
   }
 
   setCurrent(id) { this._current = this.getById(id); }

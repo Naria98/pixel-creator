@@ -1,0 +1,11 @@
+[
+  { "file": "gameboy.hex", "name": "Game Boy" },
+  { "file": "nes.hex", "name": "NES" },
+  { "file": "cga.hex", "name": "CGA" },
+  { "file": "pico8.hex", "name": "PICO-8" },
+  { "file": "mono.hex", "name": "흑백" },
+  { "file": "allstars.hex", "name": "All Stars" },
+  { "file": "blk-nx64.hex", "name": "BLK NX64" },
+  { "file": "otterisk-96.hex", "name": "Otterisk 96" },
+  { "file": "resurrect-64.hex", "name": "Resurrect 64" }
+]
