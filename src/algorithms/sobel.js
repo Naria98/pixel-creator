@@ -103,21 +103,20 @@ export function sobelDownsample(imageData, targetWidth, targetHeight, { legacyEd
 
   const { edges } = sobelEdgeDetect(imageData);
 
-  const blockW = Math.ceil(width / targetWidth);
-  const blockH = Math.ceil(height / targetHeight);
   const result = new Uint8ClampedArray(targetWidth * targetHeight * 4);
 
   // legacyEdge=true: 이전 방식 (블록 ≤4px이면 가중치 2×)
   // legacyEdge=false: 개선 방식 (항상 1, 커버리지 기반 판정으로 대체)
-  const avgBlock = (blockW + blockH) / 2;
+  const avgBlock = ((width / targetWidth) + (height / targetHeight)) / 2;
   const edgeWeight = legacyEdge ? (avgBlock <= 4 ? 2 : 1) : 1;
 
   for (let ty = 0; ty < targetHeight; ty++) {
     for (let tx = 0; tx < targetWidth; tx++) {
-      const startX = tx * blockW;
-      const startY = ty * blockH;
-      const endX = Math.min(startX + blockW, width);
-      const endY = Math.min(startY + blockH, height);
+      // 실수 비율 기반 블록 경계 — 소스 픽셀을 균등 분배하여 중앙 정렬 유지
+      const startX = Math.round(tx * width / targetWidth);
+      const startY = Math.round(ty * height / targetHeight);
+      const endX = Math.round((tx + 1) * width / targetWidth);
+      const endY = Math.round((ty + 1) * height / targetHeight);
 
       let r = 0, g = 0, b = 0, a = 0, count = 0;
       // 엣지 픽셀과 비엣지 픽셀을 분리 집계 — 외곽선 색상 우선 선택에 사용
@@ -187,16 +186,14 @@ export function sobelDownsample(imageData, targetWidth, targetHeight, { legacyEd
  */
 function boxDownsample(imageData, targetWidth, targetHeight) {
   const { data, width, height } = imageData;
-  const blockW = Math.ceil(width / targetWidth);
-  const blockH = Math.ceil(height / targetHeight);
   const result = new Uint8ClampedArray(targetWidth * targetHeight * 4);
 
   for (let ty = 0; ty < targetHeight; ty++) {
     for (let tx = 0; tx < targetWidth; tx++) {
-      const startX = tx * blockW;
-      const startY = ty * blockH;
-      const endX = Math.min(startX + blockW, width);
-      const endY = Math.min(startY + blockH, height);
+      const startX = Math.round(tx * width / targetWidth);
+      const startY = Math.round(ty * height / targetHeight);
+      const endX = Math.round((tx + 1) * width / targetWidth);
+      const endY = Math.round((ty + 1) * height / targetHeight);
 
       let r = 0, g = 0, b = 0, a = 0, count = 0;
       for (let y = startY; y < endY; y++) {
