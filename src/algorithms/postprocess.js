@@ -168,12 +168,12 @@ export function removeLonelyPixels(imageData) {
 
       const sameCount = neighbors.filter(p => colorEqual(p, center)).length;
       if (sameCount === 0 && neighbors.length >= 2) {
-        // 주변보다 40+ 어두운 픽셀은 의도된 외곽선 → 보존 (소형 이미지에서 자주 발생)
+        // 주변보다 30+ 어두운 픽셀은 의도된 외곽선 → 보존 (중간 대비 외곽선 조각도 보호)
         const centerLum = 0.299 * center.r + 0.587 * center.g + 0.114 * center.b;
         const avgNeighborLum = neighbors.reduce(
           (s, p) => s + 0.299 * p.r + 0.587 * p.g + 0.114 * p.b, 0
         ) / neighbors.length;
-        if (avgNeighborLum - centerLum > 40) continue;
+        if (avgNeighborLum - centerLum > 30) continue;
 
         // 최다 색상으로 대체
         const dominant = findDominantColor(neighbors);
@@ -267,7 +267,7 @@ export function thinOutlines(imageData) {
 
   // 1단계: 외곽선 맵 생성
   // 주변 4방향 밝은 이웃이 2개 이상이고 밝기 차이 > lumDiff 이면 외곽선
-  const lumDiff = 30;
+  const lumDiff = 45;
   const isOutline = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {

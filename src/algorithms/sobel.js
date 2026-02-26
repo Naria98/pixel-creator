@@ -150,9 +150,12 @@ export function sobelDownsample(imageData, targetWidth, targetHeight, { legacyEd
             // 이전 방식: 밝기 차이만 보고 판단
             useEdge = (nLum - eLum) > 40;
           } else {
-            // 개선 방식: 밝기 차이 + 커버리지 30% 이상
+            // 개선 방식: 대비 기반 2단계 판정
+            // 고대비(>80): 커버리지 무관 — 선명한 외곽선 보존
+            // 중간 대비(40~80): 커버리지 15% 이상 — 얇은 외곽선도 감지
             const edgeCoverage = eCount / totalPixels;
-            useEdge = (nLum - eLum) > 40 && edgeCoverage > 0.30;
+            const lumDiff = nLum - eLum;
+            useEdge = lumDiff > 80 || (lumDiff > 40 && edgeCoverage > 0.15);
           }
         }
         if (useEdge) {
