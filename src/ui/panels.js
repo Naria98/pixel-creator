@@ -4,6 +4,7 @@
 
 import { rgbToHex, hexToRgb } from '../core/palette.js';
 import { qualityCheck } from '../algorithms/postprocess.js';
+import { rgbToLab, labDistance } from '../algorithms/kmeans.js';
 
 export class PanelManager {
   constructor(editor, tools, paletteManager, renderer) {
@@ -167,9 +168,57 @@ export class PanelManager {
       a.click();
     });
 
+    document.getElementById('palette-remap')?.addEventListener('click', () => {
+      this._remapToPalette();
+    });
+
     // 초기 팔레트 (PICO-8)
     const pico8 = this.palette.getById('preset_pico8');
     if (pico8) { this.palette.setCurrent(pico8.id); this._renderPaletteColors(pico8.colors); }
+  }
+
+  /** 현재 레이어의 모든 색상을 선택된 팔레트의 가장 가까운 색상으로 교체 */
+  _remapToPalette() {
+    const pal = this.palette.getCurrent();
+    if (!pal || !pal.colors.length) { alert('먼저 팔레트를 선택하세요.'); return; }
+    const layer = this.editor.activeLayer;
+    if (!layer) return;
+
+    const labPalette = pal.colors.map(c => ({ lab: rgbToLab(c.r, c.g, c.b), rgb: c }));
+    const { width, height } = this.editor;
+
+    // LAB 매핑 캐시 (동일 RGB → 동일 결과이므로 중복 계산 방지)
+    const cache = new Map();
+
+    this.editor.beginStroke();
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        if (layer.data[idx + 3] < 128) continue;
+
+        const r = layer.data[idx], g = layer.data[idx + 1], b = layer.data[idx + 2];
+        const key = (r << 16) | (g << 8) | b;
+
+        let best;
+        if (cache.has(key)) {
+          best = cache.get(key);
+        } else {
+          const lab = rgbToLab(r, g, b);
+          let minD = Infinity;
+          for (const { lab: pl, rgb } of labPalette) {
+            const d = labDistance(lab, pl);
+            if (d < minD) { minD = d; best = rgb; }
+          }
+          cache.set(key, best);
+        }
+
+        if (best.r !== r || best.g !== g || best.b !== b) {
+          this.editor.setPixel(x, y, best.r, best.g, best.b, 255);
+        }
+      }
+    }
+    this.editor.endStroke();
+    this.renderer.markDirty();
   }
 
   _renderPaletteColors(colors) {
