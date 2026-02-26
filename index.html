@@ -225,6 +225,10 @@
       <!-- 대칭 -->
       <button id="sym-h" title="좌우 대칭" style="font-size:12px;width:var(--tool-size);height:var(--tool-size);border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;">↔</button>
       <button id="sym-v" title="상하 대칭" style="font-size:12px;width:var(--tool-size);height:var(--tool-size);border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;">↕</button>
+      <div class="tool-sep"></div>
+      <!-- 실행취소 / 다시실행 -->
+      <button id="btn-undo" title="실행취소 (Ctrl+Z)" disabled style="font-size:14px;width:var(--tool-size);height:var(--tool-size);border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;">↩</button>
+      <button id="btn-redo" title="다시실행 (Ctrl+Y)" disabled style="font-size:14px;width:var(--tool-size);height:var(--tool-size);border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;">↪</button>
     </aside>
 
     <!-- 캔버스 -->
@@ -373,6 +377,10 @@
     <div class="form-row">
       <label>배경 자동 제거</label>
       <input type="checkbox" id="opt-rmbg">
+    </div>
+    <div class="form-row">
+      <label>외곽선 개선 (씨닝)</label>
+      <input type="checkbox" id="opt-thin-outlines" checked>
     </div>
   </div>
 
@@ -648,6 +656,7 @@
           removeLonely:           document.getElementById('opt-lonely').checked,
           preventBandingEnabled:  document.getElementById('opt-banding').checked,
           removeBackgroundAuto:   document.getElementById('opt-rmbg').checked,
+          thinOutlinesEnabled:    document.getElementById('opt-thin-outlines').checked,
         };
         const { imageData, palette } = await converter.convert(_pendingImageData, options);
         await applyConversionResult(imageData, palette, options.targetWidth, options.targetHeight);
@@ -767,6 +776,19 @@
   // ESC 키로 패널 닫기
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') hideConvertPanel();
+  });
+
+  // ─── 실행취소 / 다시실행 버튼 ─────────────────────────────────────────────
+
+  document.getElementById('btn-undo').addEventListener('click', () => {
+    editor.undo();
+  });
+  document.getElementById('btn-redo').addEventListener('click', () => {
+    editor.redo();
+  });
+  editor.on('historyChanged', () => {
+    document.getElementById('btn-undo').disabled = !editor.canUndo();
+    document.getElementById('btn-redo').disabled = !editor.canRedo();
   });
 
   // ─── 초기 렌더링 ──────────────────────────────────────────────────────────

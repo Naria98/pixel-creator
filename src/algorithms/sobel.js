@@ -83,7 +83,7 @@ function otsuThreshold(data) {
  * Sobel 엣지 가이드 다운샘플링
  * 엣지 픽셀에 높은 가중치를 부여해 경계선 선명도 보존
  */
-export function sobelDownsample(imageData, targetWidth, targetHeight) {
+export function sobelDownsample(imageData, targetWidth, targetHeight, { legacyEdge = false } = {}) {
   const { data, width, height } = imageData;
 
   // 축소 비율이 6×를 초과하면 단계적 다운샘플링:
@@ -97,7 +97,7 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
     const midH = Math.round(targetHeight * 4);
     if (midW < width && midH < height) {
       const intermediate = boxDownsample(imageData, midW, midH);
-      return sobelDownsample(intermediate, targetWidth, targetHeight);
+      return sobelDownsample(intermediate, targetWidth, targetHeight, { legacyEdge });
     }
   }
 
@@ -107,12 +107,10 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
   const blockH = Math.ceil(height / targetHeight);
   const result = new Uint8ClampedArray(targetWidth * targetHeight * 4);
 
-  // 블록 크기에 따라 엣지 가중치를 조정:
-  //   소형 블록(≤4px): 2× — 경계 선명도 보존
-  //   대형 블록( >4px): 1× — 균일 가중치 (블록 전체에 외곽색이 번지는 현상 방지)
-  //   64px 출력처럼 블록이 8px 이상일 때 외곽선이 두꺼워지던 원인
+  // legacyEdge=true: 이전 방식 (블록 ≤4px이면 가중치 2×)
+  // legacyEdge=false: 개선 방식 (항상 1, 커버리지 기반 판정으로 대체)
   const avgBlock = (blockW + blockH) / 2;
-  const edgeWeight = avgBlock <= 4 ? 2 : 1;
+  const edgeWeight = legacyEdge ? (avgBlock <= 4 ? 2 : 1) : 1;
 
   for (let ty = 0; ty < targetHeight; ty++) {
     for (let tx = 0; tx < targetWidth; tx++) {
@@ -143,14 +141,20 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
       }
 
       const tidx = (ty * targetWidth + tx) * 4;
-      if (count > 0) {
-        // 블록 내 엣지 픽셀이 비엣지보다 40+ 어두우면 외곽선으로 판단 → 엣지 색상 사용
-        // 단순 가중치 평균(2×)은 4×4 블록에서 1개 어두운 픽셀이 15개에 묻혀 소실되는 문제 해결
+      const totalPixels = eCount + nCount;
+      if (count > 0 && totalPixels > 0) {
         let useEdge = false;
         if (eCount > 0 && nCount > 0) {
           const eLum = (0.299 * er + 0.587 * eg + 0.114 * eb) / eCount;
           const nLum = (0.299 * nr + 0.587 * ng + 0.114 * nb) / nCount;
-          useEdge = (nLum - eLum) > 40;
+          if (legacyEdge) {
+            // 이전 방식: 밝기 차이만 보고 판단
+            useEdge = (nLum - eLum) > 40;
+          } else {
+            // 개선 방식: 밝기 차이 + 커버리지 30% 이상
+            const edgeCoverage = eCount / totalPixels;
+            useEdge = (nLum - eLum) > 40 && edgeCoverage > 0.30;
+          }
         }
         if (useEdge) {
           result[tidx]     = Math.round(er / eCount);
@@ -163,6 +167,11 @@ export function sobelDownsample(imageData, targetWidth, targetHeight) {
           result[tidx + 2] = Math.round(b / count);
           result[tidx + 3] = Math.round(a / count);
         }
+      } else if (count > 0) {
+        result[tidx]     = Math.round(r / count);
+        result[tidx + 1] = Math.round(g / count);
+        result[tidx + 2] = Math.round(b / count);
+        result[tidx + 3] = Math.round(a / count);
       }
     }
   }

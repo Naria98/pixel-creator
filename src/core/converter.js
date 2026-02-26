@@ -118,4 +118,5 @@ export const DEFAULT_OPTIONS = {
   lightDir: 'top-left',
   removeLonely: true,
   preventBandingEnabled: true,
+  thinOutlinesEnabled: true,
 };

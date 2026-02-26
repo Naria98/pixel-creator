@@ -154,6 +154,7 @@ export class PixelEditor {
 
   beginStroke() {
     this._currentDelta = [];
+    this._deltaMap = new Map();  // pixelIndex → delta 배열 인덱스
   }
 
   setPixel(x, y, r, g, b, a = 255) {
@@ -171,7 +172,15 @@ export class PixelEditor {
     layer.dirty = true;
 
     if (this._currentDelta) {
-      this._currentDelta.push({ x, y, before, after: [r, g, b, a] });
+      const key = y * this.width + x;
+      if (this._deltaMap.has(key)) {
+        // 같은 픽셀 재기록: before(원본)은 유지, after만 최신값으로 갱신
+        this._currentDelta[this._deltaMap.get(key)].after = [r, g, b, a];
+      } else {
+        // 첫 기록: 원본 before 저장
+        this._deltaMap.set(key, this._currentDelta.length);
+        this._currentDelta.push({ x, y, before, after: [r, g, b, a] });
+      }
     }
   }
 
@@ -186,10 +195,12 @@ export class PixelEditor {
   endStroke() {
     if (!this._currentDelta || this._currentDelta.length === 0) {
       this._currentDelta = null;
+      this._deltaMap = null;
       return;
     }
     this._pushUndo({ type: 'stroke', layerIdx: this._activeLayerIdx, pixels: this._currentDelta });
     this._currentDelta = null;
+    this._deltaMap = null;
   }
 
   // ─── Undo / Redo (Delta 방식) ──────────────────────────────────────────────
@@ -220,6 +231,22 @@ export class PixelEditor {
   }
 
   _applyDelta(delta, direction) {
+    // 레이어 삽입 Undo/Redo
+    if (delta.type === 'insertLayer') {
+      if (direction === 'before') {
+        // Undo: 삽입된 레이어 제거
+        this.layers.splice(delta.insertIdx, 1);
+        this._activeLayerIdx = Math.min(this._activeLayerIdx, this.layers.length - 1);
+        this.emit('layersChanged');
+      } else {
+        // Redo: 레이어 다시 삽입
+        this.layers.splice(delta.insertIdx, 0, delta.layerData);
+        this._activeLayerIdx = delta.insertIdx;
+        this.emit('layersChanged');
+      }
+      return;
+    }
+
     const layer = this.layers[delta.layerIdx];
     if (!layer) return;
     for (const { x, y, before, after } of delta.pixels) {
@@ -422,13 +449,14 @@ export class PixelEditor {
     this.emit('pixelsChanged');
   }
 
-  /** 변환 결과를 새 레이어로 삽입 */
+  /** 변환 결과를 새 레이어로 삽입 (Undo 가능) */
   insertConversionResult(imageData) {
     const layer = this._createLayer('변환 결과');
     layer.data = new Uint8ClampedArray(imageData.data);
     layer.dirty = true;
     this.layers.unshift(layer);
     this._activeLayerIdx = 0;
+    this._pushUndo({ type: 'insertLayer', insertIdx: 0, layerData: layer });
     this.emit('layersChanged');
     this.emit('pixelsChanged');
   }

@@ -11,7 +11,7 @@ import { sobelDownsample } from '../algorithms/sobel.js';
 import { quantizeColors, mapToPalette } from '../algorithms/kmeans.js';
 import { applyDithering } from '../algorithms/dithering.js';
 import { removeBackground, floodFill } from '../algorithms/floodfill.js';
-import { antiAlias, selectiveOutline, removeLonelyPixels, preventBanding } from '../algorithms/postprocess.js';
+import { antiAlias, selectiveOutline, removeLonelyPixels, preventBanding, thinOutlines } from '../algorithms/postprocess.js';
 import { truePixelize } from '../algorithms/blockdetect.js';
 
 self.onmessage = async (e) => {
@@ -51,12 +51,13 @@ async function convert(imageData, opts, onProgress) {
     lightDir = 'top-left',
     removeLonely = true,
     preventBandingEnabled = true,
+    thinOutlinesEnabled = true,
   } = opts;
 
   onProgress(5);
 
   // 1단계: Sobel 엣지 가이드 다운샘플링
-  let current = sobelDownsample(imageData, targetWidth, targetHeight);
+  let current = sobelDownsample(imageData, targetWidth, targetHeight, { legacyEdge: !thinOutlinesEnabled });
   onProgress(20);
 
   // 2단계: 배경 자동 제거 (선택)
@@ -79,13 +80,19 @@ async function convert(imageData, opts, onProgress) {
   if (dithering !== 'none') {
     current = applyDithering(current, palette, dithering);
   }
-  onProgress(75);
+  onProgress(72);
+
+  // 5.5단계: 외곽선 씨닝 — 다운샘플링으로 두꺼워진 외곽선을 1px로 정리
+  if (thinOutlinesEnabled) {
+    current = thinOutlines(current);
+  }
+  onProgress(78);
 
   // 6단계: 후처리
   if (antiAliasEnabled) {
     current = antiAlias(current);
   }
-  onProgress(82);
+  onProgress(84);
 
   if (selectiveOutlineEnabled) {
     current = selectiveOutline(current, lightDir);

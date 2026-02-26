@@ -29,10 +29,22 @@ export class ShortcutManager {
 
   _normalize(e) {
     const parts = [];
-    if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
-    if (e.shiftKey) parts.push('Shift');
-    if (e.altKey) parts.push('Alt');
-    parts.push(e.key.toLowerCase());
+    if (e.ctrlKey || e.metaKey) parts.push('ctrl');
+    if (e.shiftKey) parts.push('shift');
+    if (e.altKey) parts.push('alt');
+
+    // e.code로 물리적 키 위치 기반 매칭 (한국어 등 비라틴 입력기 지원)
+    // e.key는 입력기 상태에 따라 'z' 대신 'ㅋ' 등을 반환해 매칭 실패
+    let keyName;
+    if (e.code && e.code.startsWith('Key')) {
+      keyName = e.code.slice(3).toLowerCase();   // 'KeyB' → 'b'
+    } else if (e.code && e.code.startsWith('Digit')) {
+      keyName = e.code.slice(5);                  // 'Digit0' → '0'
+    } else {
+      keyName = e.key.toLowerCase();              // '[', 'delete', 'backspace' 등
+    }
+
+    parts.push(keyName);
     return parts.join('+');
   }
 

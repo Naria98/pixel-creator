@@ -242,6 +242,117 @@ export function preventBanding(imageData) {
   return new ImageData(result, width, height);
 }
 
+// ─── 외곽선 씨닝 (Outline Thinning) ──────────────────────────────────────────
+
+/**
+ * 2px 이상 두꺼운 외곽선을 1px로 얇게 만드는 후처리.
+ *
+ * 알고리즘:
+ *  1. 각 픽셀이 "외곽선"인지 판별 (주변 밝은 픽셀보다 lumDiff 이상 어두운 픽셀)
+ *  2. 외곽선 픽셀 중 수평/수직으로 인접한 외곽선 픽셀이 있으면 "두꺼운 외곽선"
+ *  3. 두꺼운 외곽선의 "안쪽" 픽셀(밝은 영역으로부터 먼 쪽)을 주변 밝은 색으로 대체
+ *
+ * 소형 출력(32-128px)에서 다운샘플링 시 번진 외곽선을 정리하는 데 효과적.
+ */
+export function thinOutlines(imageData) {
+  const { data, width, height } = imageData;
+
+  // 소형 이미지(128px 이하)에서만 적용 — 큰 이미지에서는 두꺼운 외곽선이 드묾
+  if (width > 128 && height > 128) return imageData;
+
+  const getLum = (x, y) => {
+    const p = getPixel(data, width, height, x, y);
+    return p ? 0.299 * p.r + 0.587 * p.g + 0.114 * p.b : -1;
+  };
+
+  // 1단계: 외곽선 맵 생성
+  // 주변 4방향 밝은 이웃이 2개 이상이고 밝기 차이 > lumDiff 이면 외곽선
+  const lumDiff = 30;
+  const isOutline = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const cLum = getLum(x, y);
+      if (cLum < 0) continue;
+      let brighterCount = 0;
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      for (const [dx, dy] of dirs) {
+        const nLum = getLum(x + dx, y + dy);
+        if (nLum >= 0 && (nLum - cLum) > lumDiff) brighterCount++;
+      }
+      if (brighterCount >= 2) isOutline[y * width + x] = 1;
+    }
+  }
+
+  // 2단계: 두꺼운 외곽선 픽셀 제거
+  // 외곽선 픽셀이 수평 또는 수직으로 인접한 외곽선 픽셀을 가지면,
+  // 밝은 이웃이 더 적은 쪽(= 안쪽)을 제거 대상으로 표시
+  const result = new Uint8ClampedArray(data);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!isOutline[y * width + x]) continue;
+
+      // 수평 인접 확인
+      const hasRight = x + 1 < width && isOutline[y * width + x + 1];
+      const hasLeft = x - 1 >= 0 && isOutline[y * width + x - 1];
+      // 수직 인접 확인
+      const hasDown = y + 1 < height && isOutline[(y + 1) * width + x];
+      const hasUp = y - 1 >= 0 && isOutline[(y - 1) * width + x];
+
+      if (!hasRight && !hasLeft && !hasDown && !hasUp) continue;
+
+      // 이 픽셀 주변 밝은 이웃 수 계산
+      const cLum = getLum(x, y);
+      let myBrightNeighbors = 0;
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      for (const [dx, dy] of dirs) {
+        const nLum = getLum(x + dx, y + dy);
+        if (nLum >= 0 && (nLum - cLum) > lumDiff) myBrightNeighbors++;
+      }
+
+      // 인접 외곽선 픽셀 중 밝은 이웃이 더 많은 것이 "바깥쪽" → 보존
+      // 밝은 이웃이 적은 것이 "안쪽" → 제거 대상
+      let shouldRemove = false;
+      for (const [dx, dy] of dirs) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        if (!isOutline[ny * width + nx]) continue;
+
+        const nLumCenter = getLum(nx, ny);
+        let neighborBrightCount = 0;
+        for (const [ddx, ddy] of dirs) {
+          const nnLum = getLum(nx + ddx, ny + ddy);
+          if (nnLum >= 0 && (nnLum - nLumCenter) > lumDiff) neighborBrightCount++;
+        }
+
+        // 인접 외곽선이 나보다 밝은 이웃을 더 많이 가짐 → 인접이 바깥, 나는 안쪽
+        if (neighborBrightCount > myBrightNeighbors) {
+          shouldRemove = true;
+          break;
+        }
+      }
+
+      if (shouldRemove) {
+        // 주변 밝은 픽셀의 평균으로 대체
+        let rSum = 0, gSum = 0, bSum = 0, cnt = 0;
+        for (const [dx, dy] of dirs) {
+          const p = getPixel(data, width, height, x + dx, y + dy);
+          if (!p) continue;
+          const pLum = 0.299 * p.r + 0.587 * p.g + 0.114 * p.b;
+          if ((pLum - cLum) > lumDiff) {
+            rSum += p.r; gSum += p.g; bSum += p.b; cnt++;
+          }
+        }
+        if (cnt > 0) {
+          setPixel(result, width, x, y,
+            Math.round(rSum / cnt), Math.round(gSum / cnt), Math.round(bSum / cnt), 255);
+        }
+      }
+    }
+  }
+
+  return new ImageData(result, width, height);
+}
+
 // ─── 품질 검사 (Phase 7) ──────────────────────────────────────────────────────
 
 /**
