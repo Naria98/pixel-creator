@@ -151,11 +151,11 @@ export function sobelDownsample(imageData, targetWidth, targetHeight, { legacyEd
             useEdge = (nLum - eLum) > 40;
           } else {
             // 개선 방식: 대비 기반 2단계 판정
-            // 고대비(>80): 커버리지 무관 — 선명한 외곽선 보존
-            // 중간 대비(40~80): 커버리지 15% 이상 — 얇은 외곽선도 감지
+            // 고대비(>60): 커버리지 무관 — 선명한 외곽선 보존
+            // 중간 대비(40~60): 커버리지 8% 이상 — 극소형 출력의 얇은 외곽선도 감지
             const edgeCoverage = eCount / totalPixels;
             const lumDiff = nLum - eLum;
-            useEdge = lumDiff > 80 || (lumDiff > 40 && edgeCoverage > 0.15);
+            useEdge = lumDiff > 60 || (lumDiff > 40 && edgeCoverage > 0.08);
           }
         }
         if (useEdge) {
@@ -199,18 +199,46 @@ function boxDownsample(imageData, targetWidth, targetHeight) {
       const endY = Math.round((ty + 1) * height / targetHeight);
 
       let r = 0, g = 0, b = 0, a = 0, count = 0;
+      let minLum = 255, maxLum = 0;
       for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
           const i = (y * width + x) * 4;
           r += data[i]; g += data[i + 1]; b += data[i + 2]; a += data[i + 3];
           count++;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          if (lum < minLum) minLum = lum;
+          if (lum > maxLum) maxLum = lum;
         }
       }
       const ti = (ty * targetWidth + tx) * 4;
-      if (count > 0) {
-        result[ti] = r / count; result[ti + 1] = g / count;
-        result[ti + 2] = b / count; result[ti + 3] = a / count;
+      if (count === 0) continue;
+
+      // 고대비 블록: 어두운 소수 픽셀(얇은 외곽선)이면 외곽선 색상 보존
+      // 순수 평균 시 1px 외곽선이 배경과 섞여 흐려지는 문제 방지
+      if (maxLum - minLum > 80) {
+        const midLum = (minLum + maxLum) / 2;
+        let dr = 0, dg = 0, db = 0, dCount = 0;
+        for (let y = startY; y < endY; y++) {
+          for (let x = startX; x < endX; x++) {
+            const i = (y * width + x) * 4;
+            const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            if (lum < midLum) {
+              dr += data[i]; dg += data[i + 1]; db += data[i + 2];
+              dCount++;
+            }
+          }
+        }
+        if (dCount > 0 && dCount / count < 0.4) {
+          result[ti]     = Math.round(dr / dCount);
+          result[ti + 1] = Math.round(dg / dCount);
+          result[ti + 2] = Math.round(db / dCount);
+          result[ti + 3] = Math.round(a / count);
+          continue;
+        }
       }
+
+      result[ti] = r / count; result[ti + 1] = g / count;
+      result[ti + 2] = b / count; result[ti + 3] = a / count;
     }
   }
   return new ImageData(result, targetWidth, targetHeight);
