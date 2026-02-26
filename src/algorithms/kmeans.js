@@ -85,8 +85,12 @@ export function quantizeColors(imageData, numColors) {
 
   if (labPixels.length === 0) return [{ r: 0, g: 0, b: 0 }];
 
-  const centroids = kMeansPlusPlus(labPixels, Math.min(numColors, labPixels.length));
-  return kMeansIterate(labPixels, centroids);
+  const initCentroids = kMeansPlusPlus(labPixels, Math.min(numColors, labPixels.length));
+  const { centroids, counts } = kMeansIterate(labPixels, initCentroids);
+
+  // 유사 색상 병합 (LAB ΔE < 6 → 인간 눈에 구분 어려운 색상 통합)
+  const merged = mergeSimilarCentroids(centroids, counts);
+  return merged.map(c => labToRgb(c.L, c.a, c.b));
 }
 
 function kMeansPlusPlus(pixels, k) {
@@ -116,6 +120,8 @@ function kMeansPlusPlus(pixels, k) {
 
 function kMeansIterate(pixels, centroids) {
   const k = centroids.length;
+  let counts = new Array(k).fill(0);
+
   for (let iter = 0; iter < 30; iter++) {
     const sums = Array.from({ length: k }, () => ({ L: 0, a: 0, b: 0, n: 0 }));
 
@@ -130,6 +136,8 @@ function kMeansIterate(pixels, centroids) {
       sums[best].b += p.b;
       sums[best].n++;
     }
+
+    counts = sums.map(s => s.n);
 
     let changed = false;
     for (let i = 0; i < k; i++) {
@@ -146,7 +154,43 @@ function kMeansIterate(pixels, centroids) {
     if (!changed) break;
   }
 
-  return centroids.map(c => labToRgb(c.L, c.a, c.b));
+  return { centroids, counts };
+}
+
+/**
+ * 유사 색상 병합: ΔE < minDeltaE인 centroid 쌍을 픽셀 수 가중 평균으로 통합
+ * 픽셀 수가 많은 클러스터 기준으로 병합하여 주요 색상 보존
+ */
+function mergeSimilarCentroids(centroids, counts, minDeltaE = 6) {
+  const order = centroids.map((_, i) => i).sort((a, b) => counts[b] - counts[a]);
+  const merged = [];
+  const mergedCounts = [];
+  const used = new Set();
+
+  for (const i of order) {
+    if (used.has(i)) continue;
+    let sumL = centroids[i].L * counts[i];
+    let suma = centroids[i].a * counts[i];
+    let sumb = centroids[i].b * counts[i];
+    let totalN = counts[i];
+
+    for (const j of order) {
+      if (i === j || used.has(j)) continue;
+      if (labDistance(centroids[i], centroids[j]) < minDeltaE) {
+        sumL += centroids[j].L * counts[j];
+        suma += centroids[j].a * counts[j];
+        sumb += centroids[j].b * counts[j];
+        totalN += counts[j];
+        used.add(j);
+      }
+    }
+
+    merged.push({ L: sumL / totalN, a: suma / totalN, b: sumb / totalN });
+    mergedCounts.push(totalN);
+    used.add(i);
+  }
+
+  return merged;
 }
 
 // ─── 팔레트 매핑 ─────────────────────────────────────────────────────────────
