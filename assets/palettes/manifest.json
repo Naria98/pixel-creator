@@ -7,5 +7,7 @@
   { "file": "allstars.hex", "name": "All Stars" },
   { "file": "blk-nx64.hex", "name": "BLK NX64" },
   { "file": "otterisk-96.hex", "name": "Otterisk 96" },
-  { "file": "resurrect-64.hex", "name": "Resurrect 64" }
+  { "file": "resurrect-64.hex", "name": "Resurrect 64" },
+  { "file": "duel.hex", "name": "Duel" },
+  { "file": "ludpiratepalette128.hex", "name": "Ludpirate 128" }
 ]
