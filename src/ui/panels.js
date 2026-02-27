@@ -3,7 +3,7 @@
  */
 
 import { rgbToHex, hexToRgb } from '../core/palette.js';
-import { qualityCheck } from '../algorithms/postprocess.js';
+import { qualityCheck, removeLonelyPixels, preventBanding } from '../algorithms/postprocess.js';
 import { rgbToLab, labDistance } from '../algorithms/kmeans.js';
 
 export class PanelManager {
@@ -429,8 +429,8 @@ export class PanelManager {
     document.getElementById('quality-check')?.addEventListener('click', () => {
       const imgData = this.editor.composite();
       const currentPalette = this.palette.getCurrent();
-      const issues = qualityCheck(imgData, currentPalette?.colors || []);
-      this._renderQualityIssues(issues);
+      this._lastQualityIssues = qualityCheck(imgData, currentPalette?.colors || []);
+      this._renderQualityIssues(this._lastQualityIssues);
     });
   }
 
@@ -445,5 +445,99 @@ export class PanelManager {
     if (lines.length === 0) lines.push('✅ 품질 검사 통과');
 
     panel.innerHTML = lines.map(l => `<div class="quality-issue">${l}</div>`).join('');
+
+    // 수정 가능한 이슈가 있으면 자동 수정 버튼 추가
+    const hasFixable = issues.lonelyPixels.length > 0
+      || issues.banding.length > 0
+      || issues.extraColors.length > 0;
+
+    if (hasFixable) {
+      const btn = document.createElement('button');
+      btn.className = 'quality-autofix-btn';
+      btn.textContent = '🔧 자동 수정';
+      btn.addEventListener('click', () => this._autoFix(this._lastQualityIssues));
+      panel.appendChild(btn);
+    }
+  }
+
+  /**
+   * 품질 검사에서 감지된 이슈를 활성 레이어에 자동 수정
+   * run-then-diff: 기존 수정 함수를 ImageData 복사본에 실행 → 원본과 diff → setPixel 적용
+   */
+  _autoFix(issues) {
+    const layer = this.editor.activeLayer;
+    if (!layer) return;
+
+    const { width, height } = this.editor;
+    const currentPalette = this.palette.getCurrent();
+
+    this.editor.beginStroke();
+
+    // 1) 고립 픽셀 수정
+    if (issues.lonelyPixels.length > 0) {
+      const srcData = new ImageData(new Uint8ClampedArray(layer.data), width, height);
+      const fixed = removeLonelyPixels(srcData);
+      for (let i = 0; i < width * height; i++) {
+        const idx = i * 4;
+        if (fixed.data[idx] !== layer.data[idx]
+          || fixed.data[idx + 1] !== layer.data[idx + 1]
+          || fixed.data[idx + 2] !== layer.data[idx + 2]
+          || fixed.data[idx + 3] !== layer.data[idx + 3]) {
+          const x = i % width, y = (i / width) | 0;
+          this.editor.setPixel(x, y, fixed.data[idx], fixed.data[idx + 1], fixed.data[idx + 2], fixed.data[idx + 3]);
+        }
+      }
+    }
+
+    // 2) 밴딩 수정
+    if (issues.banding.length > 0) {
+      const srcData = new ImageData(new Uint8ClampedArray(layer.data), width, height);
+      const fixed = preventBanding(srcData);
+      for (let i = 0; i < width * height; i++) {
+        const idx = i * 4;
+        if (fixed.data[idx] !== layer.data[idx]
+          || fixed.data[idx + 1] !== layer.data[idx + 1]
+          || fixed.data[idx + 2] !== layer.data[idx + 2]
+          || fixed.data[idx + 3] !== layer.data[idx + 3]) {
+          const x = i % width, y = (i / width) | 0;
+          this.editor.setPixel(x, y, fixed.data[idx], fixed.data[idx + 1], fixed.data[idx + 2], fixed.data[idx + 3]);
+        }
+      }
+    }
+
+    // 3) 팔레트 초과 색상 수정 — 가장 가까운 팔레트 색으로 교체
+    if (issues.extraColors.length > 0 && currentPalette?.colors?.length > 0) {
+      const palLab = currentPalette.colors.map(c => ({ lab: rgbToLab(c.r, c.g, c.b), rgb: c }));
+      const cache = new Map();
+
+      for (const { x, y } of issues.extraColors) {
+        const idx = (y * width + x) * 4;
+        const r = layer.data[idx], g = layer.data[idx + 1], b = layer.data[idx + 2];
+        const key = (r << 16) | (g << 8) | b;
+
+        let best = cache.get(key);
+        if (!best) {
+          const lab = rgbToLab(r, g, b);
+          let minD = Infinity;
+          for (const p of palLab) {
+            const d = labDistance(lab, p.lab);
+            if (d < minD) { minD = d; best = p.rgb; }
+          }
+          cache.set(key, best);
+        }
+
+        if (best.r !== r || best.g !== g || best.b !== b) {
+          this.editor.setPixel(x, y, best.r, best.g, best.b, 255);
+        }
+      }
+    }
+
+    this.editor.endStroke();
+    this.renderer.markDirty();
+
+    // 재검사 → 결과 갱신
+    const imgData = this.editor.composite();
+    this._lastQualityIssues = qualityCheck(imgData, currentPalette?.colors || []);
+    this._renderQualityIssues(this._lastQualityIssues);
   }
 }
